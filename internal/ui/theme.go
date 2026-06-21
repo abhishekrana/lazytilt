@@ -1,7 +1,7 @@
 package ui
 
 import (
-	"github.com/abhishek-rana/lazytilt/internal/tilt"
+	"github.com/abhishekrana/lazytilt/internal/tilt"
 	"github.com/charmbracelet/lipgloss"
 )
 

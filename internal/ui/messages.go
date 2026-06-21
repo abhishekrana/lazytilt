@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/abhishek-rana/lazytilt/internal/discovery"
-	"github.com/abhishek-rana/lazytilt/internal/tilt"
+	"github.com/abhishekrana/lazytilt/internal/discovery"
+	"github.com/abhishekrana/lazytilt/internal/tilt"
 	tea "github.com/charmbracelet/bubbletea"
 )
 

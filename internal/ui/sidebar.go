@@ -3,7 +3,7 @@ package ui
 import (
 	"strings"
 
-	"github.com/abhishek-rana/lazytilt/internal/tilt"
+	"github.com/abhishekrana/lazytilt/internal/tilt"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )

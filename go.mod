@@ -1,4 +1,4 @@
-module github.com/abhishek-rana/lazytilt
+module github.com/abhishekrana/lazytilt
 
 go 1.25.0
 

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/abhishek-rana/lazytilt/internal/discovery"
-	"github.com/abhishek-rana/lazytilt/internal/tilt"
+	"github.com/abhishekrana/lazytilt/internal/discovery"
+	"github.com/abhishekrana/lazytilt/internal/tilt"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

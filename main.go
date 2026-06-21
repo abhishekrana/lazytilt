@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/abhishek-rana/lazytilt/internal/tilt"
-	"github.com/abhishek-rana/lazytilt/internal/ui"
+	"github.com/abhishekrana/lazytilt/internal/tilt"
+	"github.com/abhishekrana/lazytilt/internal/ui"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
