@@ -163,6 +163,37 @@ func TestHelpPopupOverlay(t *testing.T) {
 	}
 }
 
+func TestTriggerConfirmation(t *testing.T) {
+	m := New("", "localhost", 10350, "")
+	m = step(m, tea.WindowSizeMsg{Width: 100, Height: 24})
+	m = step(m, twoInstances())
+	m = step(m, viewMsg{port: 10350, view: mustView(t, "view_k8s.json")})
+	m = step(m, tea.KeyMsg{Type: tea.KeyDown}) // select "api" (index 1)
+
+	// r opens a confirmation and does NOT act yet.
+	m = step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	if m.mode != modeConfirm || m.pendingResource != "api" {
+		t.Fatalf("r should ask to confirm 'api', got mode=%v res=%q", m.mode, m.pendingResource)
+	}
+	if !strings.Contains(m.View(), "Trigger api?") {
+		t.Error("confirmation popup not shown")
+	}
+	if m.statusMsg != "" {
+		t.Error("no action should have run before confirmation")
+	}
+
+	// n cancels.
+	if c := step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")}); c.mode != modeNormal || c.statusMsg != "" {
+		t.Error("n should cancel without acting")
+	}
+
+	// y confirms and kicks off the trigger.
+	y := step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	if y.mode != modeNormal || !strings.Contains(y.statusMsg, "trigger api") {
+		t.Errorf("y should confirm; mode=%v status=%q", y.mode, y.statusMsg)
+	}
+}
+
 func TestStaleViewDropped(t *testing.T) {
 	m := New("", "localhost", 10350, "")
 	m = step(m, tea.WindowSizeMsg{Width: 110, Height: 26})

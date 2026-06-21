@@ -25,6 +25,7 @@ type inputMode int
 const (
 	modeNormal inputMode = iota
 	modeLogFilter
+	modeConfirm
 )
 
 // topBarHeight / footerHeight are the rendered heights of the header and footer:
@@ -55,9 +56,10 @@ type Model struct {
 	follow bool
 	level  logLevel
 
-	mode      inputMode
-	typing    string
-	logFilter string
+	mode            inputMode
+	typing          string
+	logFilter       string
+	pendingResource string // resource awaiting trigger confirmation
 
 	showDisabled bool
 	showHelp     bool
@@ -114,8 +116,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		if m.mode != modeNormal {
+		switch m.mode {
+		case modeLogFilter:
 			return m.updateFilterInput(msg)
+		case modeConfirm:
+			return m.updateConfirm(msg)
 		}
 		return m.updateKeys(msg)
 
@@ -220,7 +225,11 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 		return m.gotoInstance(int(msg.String()[0] - '1'))
 	case "r":
-		return m.runAction(tilt.ActionTrigger)
+		if r, ok := m.selectedResource(); ok {
+			m.mode = modeConfirm
+			m.pendingResource = r.Name()
+		}
+		return m, nil
 	case "e":
 		return m.runAction(tilt.ActionEnable)
 	case "d":
@@ -308,6 +317,26 @@ func (m *Model) applyTyping() {
 	}
 }
 
+// updateConfirm handles the trigger confirmation prompt: y/enter confirms,
+// ctrl+c quits, anything else cancels.
+func (m Model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c":
+		return m, tea.Quit
+	case "y", "Y", "enter":
+		res := m.pendingResource
+		m.mode = modeNormal
+		m.pendingResource = ""
+		m.statusMsg = fmt.Sprintf("trigger %s…", res)
+		m.statusErr = false
+		return m, actionCmd(tilt.ActionTrigger, res, m.currentPort())
+	default:
+		m.mode = modeNormal
+		m.pendingResource = ""
+		return m, nil
+	}
+}
+
 func (m Model) switchInstance(d int) (tea.Model, tea.Cmd) {
 	if len(m.instances) < 2 {
 		return m, nil
@@ -349,10 +378,30 @@ func (m Model) View() string {
 		m.renderRightPane(max(m.width-sidebarWidth-1, 10), bodyH),
 	)
 	frame := lipgloss.JoinVertical(lipgloss.Left, m.renderTopBar(), body, m.renderFooter())
-	if m.showHelp {
+	switch {
+	case m.showHelp:
 		return overlayCenter(frame, m.helpBox(), m.width, m.height)
+	case m.mode == modeConfirm:
+		return overlayCenter(frame, m.confirmBox(), m.width, m.height)
 	}
 	return frame
+}
+
+// confirmBox is the trigger confirmation popup, centered by overlayCenter.
+func (m Model) confirmBox() string {
+	lines := []string{
+		m.theme.header().Render("Trigger " + m.pendingResource + "?"),
+		"",
+		m.theme.muted().Render("(y) yes        (n) no"),
+	}
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.theme.Accent).
+		Foreground(m.theme.Text).
+		Padding(2, 6).
+		Width(46).
+		Align(lipgloss.Center).
+		Render(strings.Join(lines, "\n"))
 }
 
 func (m Model) renderTopBar() string {
@@ -380,7 +429,7 @@ func (m Model) renderFooter() string {
 
 	var inner string
 	switch {
-	case m.mode != modeNormal:
+	case m.mode == modeLogFilter:
 		inner = fmt.Sprintf(" search logs: %s▏", m.typing)
 	case m.statusMsg != "":
 		c := m.theme.OK
@@ -402,7 +451,7 @@ func (m Model) helpBox() string {
 		{"⏎ / tab", "focus logs / toggle pane"},
 		{"[  ]", "previous / next instance"},
 		{"1 … 9", "jump to instance N"},
-		{"r", "trigger (rebuild)"},
+		{"r", "trigger / restart (asks y/n)"},
 		{"e  d", "enable / disable"},
 		{"/", "search logs (highlights matches)"},
 		{"f", "follow / tail logs"},
