@@ -9,7 +9,27 @@ import (
 	"github.com/abhishekrana/lazytilt/internal/discovery"
 	"github.com/abhishekrana/lazytilt/internal/tilt"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
+
+func TestFocusIndicatorChangesFrame(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(termenv.Ascii)
+
+	m := New("", "localhost", 10350, "")
+	m = step(m, tea.WindowSizeMsg{Width: 100, Height: 24})
+	m = step(m, twoInstances())
+	m = step(m, viewMsg{port: 10350, view: mustView(t, "view_k8s.json")})
+
+	sidebarFocused := m.View()
+	m = step(m, tea.KeyMsg{Type: tea.KeyTab})
+	logsFocused := m.View()
+
+	if sidebarFocused == logsFocused {
+		t.Error("focus change should be visually reflected in the frame")
+	}
+}
 
 func mustView(t *testing.T, name string) *tilt.View {
 	t.Helper()

@@ -149,19 +149,33 @@ func (m Model) renderRightPane(w, h int) string {
 	header := m.theme.muted().Render("no resource selected")
 	if ok {
 		st := r.State()
-		parts := []string{m.theme.header().Render(r.Name())}
-		if b := r.Backend(); b != "" {
-			parts = append(parts, m.theme.accent().Render(b))
-		}
-		if rl := r.RuntimeLine(); rl != "" {
-			parts = append(parts, m.theme.muted().Render(rl))
-		}
 		statusSeg := st.Label()
 		if g := statusGlyph(st); g != "" {
 			statusSeg = g + " " + statusSeg
 		}
-		parts = append(parts, lipgloss.NewStyle().Foreground(m.theme.StatusColor(st)).Render(statusSeg))
-		header = strings.Join(parts, m.theme.muted().Render(" · "))
+		if m.focus == focusLogs {
+			// Focus indicator: the header takes the same reverse-video highlight the
+			// sidebar selection uses, so the cursor highlight follows focus.
+			plain := r.Name()
+			if b := r.Backend(); b != "" {
+				plain += " · " + b
+			}
+			if rl := r.RuntimeLine(); rl != "" {
+				plain += " · " + rl
+			}
+			plain += " · " + statusSeg
+			header = lipgloss.NewStyle().Reverse(true).Bold(true).Width(w).Render(ansi.Truncate(" "+plain, w, "…"))
+		} else {
+			parts := []string{m.theme.header().Render(r.Name())}
+			if b := r.Backend(); b != "" {
+				parts = append(parts, m.theme.accent().Render(b))
+			}
+			if rl := r.RuntimeLine(); rl != "" {
+				parts = append(parts, m.theme.muted().Render(rl))
+			}
+			parts = append(parts, lipgloss.NewStyle().Foreground(m.theme.StatusColor(st)).Render(statusSeg))
+			header = strings.Join(parts, m.theme.muted().Render(" · "))
+		}
 	}
 
 	follow := "follow off"

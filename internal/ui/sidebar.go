@@ -57,11 +57,12 @@ func (m Model) renderSidebar(h int) string {
 	lines := make([]string, 0, h)
 	for i, r := range vis {
 		st := r.State()
-		g := statusGlyph(st)
 
-		if i == m.selected {
-			// Selected row: a single reverse-video bar spanning the full width.
-			// Built as plain text (no inline ANSI) so the highlight is uniform.
+		// The selected row gets the bright reverse-video bar only while the sidebar
+		// is focused. When focus moves to the logs, the highlight moves with it (to
+		// the log header) and the sidebar row reverts to normal, keeping the ▶ arrow.
+		if i == m.selected && m.focus == focusSidebar {
+			g := statusGlyph(st)
 			text := "▶ "
 			if g != "" {
 				text += g + " "
@@ -77,7 +78,11 @@ func (m Model) renderSidebar(h int) string {
 		if st == tilt.StatusDisabled {
 			nameStyle = m.theme.muted()
 		}
-		row := " " + block + " " + nameStyle.Render(r.Name())
+		ind := " "
+		if i == m.selected {
+			ind = m.theme.accent().Render("▶")
+		}
+		row := ind + block + " " + nameStyle.Render(r.Name())
 		if st == tilt.StatusError {
 			row += " " + lipgloss.NewStyle().Foreground(m.theme.Err).Render("✕")
 		}
