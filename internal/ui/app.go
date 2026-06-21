@@ -24,7 +24,6 @@ type inputMode int
 
 const (
 	modeNormal inputMode = iota
-	modeResFilter
 	modeLogFilter
 )
 
@@ -55,7 +54,6 @@ type Model struct {
 
 	mode      inputMode
 	typing    string
-	resFilter string
 	logFilter string
 
 	showDisabled bool
@@ -245,13 +243,8 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.theme = m.theme.next()
 		return m, nil
 	case "/":
-		if m.focus == focusSidebar {
-			m.mode = modeResFilter
-			m.typing = m.resFilter
-		} else {
-			m.mode = modeLogFilter
-			m.typing = m.logFilter
-		}
+		m.mode = modeLogFilter
+		m.typing = m.logFilter
 		return m, nil
 	case "up", "k":
 		if m.focus == focusSidebar {
@@ -306,12 +299,7 @@ func (m Model) updateFilterInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) applyTyping() {
-	switch m.mode {
-	case modeResFilter:
-		m.resFilter = m.typing
-		m.clampSelection()
-		m.setLogs()
-	case modeLogFilter:
+	if m.mode == modeLogFilter {
 		m.logFilter = m.typing
 		m.setLogs()
 	}
@@ -384,11 +372,7 @@ func (m Model) renderTopBar() string {
 
 func (m Model) renderFooter() string {
 	if m.mode != modeNormal {
-		label := "log filter"
-		if m.mode == modeResFilter {
-			label = "resource filter"
-		}
-		return m.theme.footer().Width(m.width).Render(fmt.Sprintf(" %s: %s▏", label, m.typing))
+		return m.theme.footer().Width(m.width).Render(fmt.Sprintf(" search logs: %s▏", m.typing))
 	}
 	inner := ""
 	if m.statusMsg != "" {
@@ -398,7 +382,7 @@ func (m Model) renderFooter() string {
 		}
 		inner = lipgloss.NewStyle().Foreground(c).Render(ansi.Truncate(" "+m.statusMsg, m.width, "…"))
 	} else {
-		keys := " ↑↓ move · r trigger · e/d enable·disable · ⏎ logs · / filter · f follow · L level · s disabled · 1-9/[ ] instance · T theme · ? help · q quit"
+		keys := " ↑↓ move · r trigger · e/d enable·disable · ⏎ logs · / search logs · f follow · L level · s disabled · 1-9/[ ] instance · T theme · ? help · q quit"
 		inner = ansi.Truncate(keys, m.width, "…")
 	}
 	return m.theme.footer().Width(m.width).Render(inner)
@@ -413,7 +397,7 @@ func (m Model) helpBox() string {
 		{"1 … 9", "jump to instance N"},
 		{"r", "trigger (rebuild)"},
 		{"e  d", "enable / disable"},
-		{"/", "filter (resources or logs)"},
+		{"/", "search logs (highlights matches)"},
 		{"f", "follow / tail logs"},
 		{"L", "cycle log level"},
 		{"c", "clear log filter"},

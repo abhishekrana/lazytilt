@@ -59,11 +59,17 @@ func (m *Model) setLogs() {
 	text := strings.TrimRight(b.String(), "\n")
 
 	flt := strings.ToLower(m.logFilter)
+	hl := lipgloss.NewStyle().Background(m.theme.Pending).Foreground(lipgloss.Color("#000000")).Bold(true)
 	out := make([]string, 0, 64)
 	for ln := range strings.SplitSeq(text, "\n") {
 		ln = sanitizeLogLine(ln)
-		if flt != "" && !strings.Contains(strings.ToLower(ansi.Strip(ln)), flt) {
-			continue
+		if flt != "" {
+			// When filtering, show the plain text with every match highlighted.
+			plain := ansi.Strip(ln)
+			if !strings.Contains(strings.ToLower(plain), flt) {
+				continue
+			}
+			ln = highlightMatches(plain, m.logFilter, hl)
 		}
 		out = append(out, ansi.Hardwrap(ln, m.vp.Width, false))
 	}
@@ -71,6 +77,31 @@ func (m *Model) setLogs() {
 	if m.follow {
 		m.vp.GotoBottom()
 	}
+}
+
+// highlightMatches wraps every case-insensitive occurrence of term in s with the
+// given style, preserving the original casing of the matched text. s must be
+// plain text (no ANSI). Matching is byte-aligned, which is correct for ASCII
+// search terms (the common case for log search).
+func highlightMatches(s, term string, style lipgloss.Style) string {
+	if term == "" {
+		return s
+	}
+	ls, lt := strings.ToLower(s), strings.ToLower(term)
+	mlen := len(lt)
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		j := strings.Index(ls[i:], lt)
+		if j < 0 {
+			b.WriteString(s[i:])
+			break
+		}
+		j += i
+		b.WriteString(s[i:j])
+		b.WriteString(style.Render(s[j : j+mlen]))
+		i = j + mlen
+	}
+	return b.String()
 }
 
 // sanitizeLogLine neutralizes terminal control characters that would corrupt the

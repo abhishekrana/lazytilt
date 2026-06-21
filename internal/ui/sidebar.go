@@ -11,18 +11,14 @@ import (
 const sidebarWidth = 28
 
 // visible returns the resources shown in the sidebar: sorted by Tilt's order,
-// with disabled ones hidden unless toggled, filtered by the name filter.
+// with disabled ones hidden unless toggled.
 func (m Model) visible() []tilt.UIResource {
 	if m.view == nil {
 		return nil
 	}
-	flt := strings.ToLower(m.resFilter)
 	var out []tilt.UIResource
 	for _, r := range m.view.Resources() {
 		if r.IsDisabled() && !m.showDisabled {
-			continue
-		}
-		if flt != "" && !strings.Contains(strings.ToLower(r.Name()), flt) {
 			continue
 		}
 		out = append(out, r)
