@@ -179,11 +179,21 @@ func (m Model) handleInstances(msg instancesMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// While the help popup is open it is modal: only close/quit keys act.
+	if m.showHelp {
+		switch msg.String() {
+		case "q", "ctrl+c":
+			return m, tea.Quit
+		case "?", "esc":
+			m.showHelp = false
+		}
+		return m, nil
+	}
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "?":
-		m.showHelp = !m.showHelp
+		m.showHelp = true
 		return m, nil
 	case "esc":
 		if m.showHelp {
@@ -342,15 +352,16 @@ func (m Model) View() string {
 	if m.width == 0 || m.height == 0 {
 		return "loading…"
 	}
-	if m.showHelp {
-		return m.renderHelp()
-	}
 	bodyH := max(m.height-topBarHeight-1, 3)
 	body := lipgloss.JoinHorizontal(lipgloss.Top,
 		m.renderSidebar(bodyH),
 		m.renderRightPane(max(m.width-sidebarWidth-1, 10), bodyH),
 	)
-	return lipgloss.JoinVertical(lipgloss.Left, m.renderTopBar(), body, m.renderFooter())
+	frame := lipgloss.JoinVertical(lipgloss.Left, m.renderTopBar(), body, m.renderFooter())
+	if m.showHelp {
+		return overlayCenter(frame, m.helpBox(), m.width, m.height)
+	}
+	return frame
 }
 
 func (m Model) renderTopBar() string {
@@ -393,28 +404,60 @@ func (m Model) renderFooter() string {
 	return m.theme.footer().Width(m.width).Render(inner)
 }
 
-func (m Model) renderHelp() string {
-	lines := []string{
-		m.theme.accent().Render("lazytilt — keys"),
-		"",
-		"  ↑/k ↓/j      move selection (sidebar)",
-		"  ⏎ / tab      focus logs / toggle pane",
-		"  esc          back to sidebar",
-		"  [  ]         previous / next Tilt instance",
-		"  1 … 9      jump directly to instance N",
-		"  r            trigger (rebuild) selected resource",
-		"  e  d         enable / disable selected resource",
-		"  /            filter (resources or logs, by focus)",
-		"  f            toggle log follow/tail",
-		"  L            cycle log level (all/errors/warnings)",
-		"  c            clear log text filter",
-		"  s            toggle showing disabled resources",
-		"  T            cycle theme (current: " + m.theme.Name + ")",
-		"  g  G         jump to top / bottom of logs",
-		"  ?            toggle this help",
-		"  q / ctrl+c   quit",
-		"",
-		m.theme.muted().Render("press ? or esc to close"),
+// helpBox is the floating help popup (a bordered box, centered by overlayCenter).
+func (m Model) helpBox() string {
+	rows := [][2]string{
+		{"↑/k ↓/j", "move selection"},
+		{"⏎ / tab", "focus logs / toggle pane"},
+		{"[  ]", "previous / next instance"},
+		{"1 … 9", "jump to instance N"},
+		{"r", "trigger (rebuild)"},
+		{"e  d", "enable / disable"},
+		{"/", "filter (resources or logs)"},
+		{"f", "follow / tail logs"},
+		{"L", "cycle log level"},
+		{"c", "clear log filter"},
+		{"s", "toggle disabled resources"},
+		{"T", "cycle theme (" + m.theme.Name + ")"},
+		{"g  G", "top / bottom of logs"},
+		{"?  esc", "close this help"},
+		{"q", "quit"},
 	}
-	return m.theme.pane().Width(m.width).Height(m.height).Padding(1, 2).Render(strings.Join(lines, "\n"))
+	lines := []string{m.theme.accent().Bold(true).Render("lazytilt — keys"), ""}
+	for _, kv := range rows {
+		lines = append(lines, fmt.Sprintf("  %-14s %s", kv[0], m.theme.muted().Render(kv[1])))
+	}
+	lines = append(lines, "", m.theme.muted().Render("  press ? or esc to close"))
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(m.theme.Accent).
+		Foreground(m.theme.Text).
+		Padding(2, 5).
+		Width(58).
+		Render(strings.Join(lines, "\n"))
+}
+
+// overlayCenter composites box centered over bg (a width×height frame),
+// replacing the cells it covers. ANSI-aware via ansi.Cut.
+func overlayCenter(bg, box string, width, height int) string {
+	bgLines := strings.Split(bg, "\n")
+	boxLines := strings.Split(box, "\n")
+	bw := lipgloss.Width(box)
+	x := max((width-bw)/2, 0)
+	y := max((height-len(boxLines))/2, 0)
+
+	for i, bl := range boxLines {
+		row := y + i
+		if row < 0 || row >= len(bgLines) {
+			continue
+		}
+		base := bgLines[row]
+		if w := lipgloss.Width(base); w < width {
+			base += strings.Repeat(" ", width-w)
+		}
+		left := ansi.Cut(base, 0, x)
+		right := ansi.Cut(base, x+bw, width)
+		bgLines[row] = left + "\x1b[0m" + bl + "\x1b[0m" + right
+	}
+	return strings.Join(bgLines, "\n")
 }

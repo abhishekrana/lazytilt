@@ -120,6 +120,29 @@ func TestNumberKeySwitchesInstance(t *testing.T) {
 	}
 }
 
+func TestHelpPopupOverlay(t *testing.T) {
+	m := New("", "localhost", 10350, "")
+	m = step(m, tea.WindowSizeMsg{Width: 110, Height: 26})
+	m = step(m, twoInstances())
+	m = step(m, viewMsg{port: 10350, view: mustView(t, "view_k8s.json")})
+
+	m = step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
+	frame := m.View()
+	if !strings.Contains(frame, "lazytilt — keys") {
+		t.Error("help popup content missing")
+	}
+	// It's an overlay, not a takeover: the header is still visible behind it.
+	if !strings.Contains(frame, "LAZYTILT") {
+		t.Error("background frame should remain visible behind the popup")
+	}
+
+	// esc closes it.
+	m = step(m, tea.KeyMsg{Type: tea.KeyEsc})
+	if strings.Contains(m.View(), "lazytilt — keys") {
+		t.Error("esc should close the help popup")
+	}
+}
+
 func TestStaleViewDropped(t *testing.T) {
 	m := New("", "localhost", 10350, "")
 	m = step(m, tea.WindowSizeMsg{Width: 110, Height: 26})
