@@ -121,23 +121,20 @@ func (t Theme) StatusColor(s tilt.Status) lipgloss.Color {
 	}
 }
 
-// Inline (foreground-only) styles — the enclosing region supplies the background.
 func (t Theme) muted() lipgloss.Style  { return lipgloss.NewStyle().Foreground(t.Muted) }
 func (t Theme) accent() lipgloss.Style { return lipgloss.NewStyle().Foreground(t.Accent) }
 func (t Theme) header() lipgloss.Style { return lipgloss.NewStyle().Foreground(t.Text).Bold(true) }
 
-// Region (background-filling) styles.
-func (t Theme) topBar() lipgloss.Style {
-	return lipgloss.NewStyle().Background(t.TopBarBg).Foreground(t.Text)
-}
-func (t Theme) footer() lipgloss.Style {
-	return lipgloss.NewStyle().Background(t.Bg).Foreground(t.Muted)
-}
-func (t Theme) pane() lipgloss.Style { return lipgloss.NewStyle().Background(t.Bg).Foreground(t.Text) }
+// Region styles. We deliberately do NOT paint a background: filling the screen
+// fights with the ANSI in Tilt's own log output and with the terminal's
+// background, which renders unevenly. The palette is applied via foreground
+// colors and we rely on the terminal's own background for an even surface.
+func (t Theme) footer() lipgloss.Style { return lipgloss.NewStyle().Foreground(t.Muted) }
+func (t Theme) pane() lipgloss.Style   { return lipgloss.NewStyle().Foreground(t.Text) }
 func (t Theme) sidebar() lipgloss.Style {
-	return lipgloss.NewStyle().Background(t.Bg).Foreground(t.Text).
+	return lipgloss.NewStyle().Foreground(t.Text).
 		Border(lipgloss.NormalBorder(), false, true, false, false).
-		BorderForeground(t.Border).BorderBackground(t.Bg)
+		BorderForeground(t.Border)
 }
 
 // statusGlyph is theme-independent.

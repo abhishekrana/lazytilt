@@ -28,6 +28,10 @@ const (
 	modeLogFilter
 )
 
+// topBarHeight is the rendered height of the header (title/instances row plus an
+// accent underline rule).
+const topBarHeight = 2
+
 // Model is the root Bubble Tea model.
 type Model struct {
 	width, height int
@@ -68,7 +72,6 @@ type Model struct {
 func New(token, host string, port int, themeName string) Model {
 	th := resolveTheme(themeName)
 	vp := viewport.New(80, 20)
-	vp.Style = lipgloss.NewStyle().Background(th.Bg)
 	return Model{
 		token:        token,
 		fallbackHost: host,
@@ -103,7 +106,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		bodyH := max(m.height-2, 3)
+		bodyH := max(m.height-topBarHeight-1, 3)
 		m.vp.Width = max(m.width-sidebarWidth-1, 10)
 		m.vp.Height = max(bodyH-3, 1)
 		m.setLogs()
@@ -203,6 +206,8 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.switchInstance(-1)
 	case "]":
 		return m.switchInstance(1)
+	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+		return m.gotoInstance(int(msg.String()[0] - '1'))
 	case "r":
 		return m.runAction(tilt.ActionTrigger)
 	case "e":
@@ -228,7 +233,6 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "T":
 		m.theme = m.theme.next()
-		m.vp.Style = lipgloss.NewStyle().Background(m.theme.Bg)
 		return m, nil
 	case "/":
 		if m.focus == focusSidebar {
@@ -307,7 +311,16 @@ func (m Model) switchInstance(d int) (tea.Model, tea.Cmd) {
 	if len(m.instances) < 2 {
 		return m, nil
 	}
-	m.active = (m.active + d + len(m.instances)) % len(m.instances)
+	return m.gotoInstance((m.active + d + len(m.instances)) % len(m.instances))
+}
+
+// gotoInstance switches to the instance at idx (0-based) and refetches without a
+// restart; a no-op if idx is out of range or already active.
+func (m Model) gotoInstance(idx int) (tea.Model, tea.Cmd) {
+	if idx < 0 || idx >= len(m.instances) || idx == m.active {
+		return m, nil
+	}
+	m.active = idx
 	m.view = nil
 	m.loadErr = nil
 	m.selected = 0
@@ -332,7 +345,7 @@ func (m Model) View() string {
 	if m.showHelp {
 		return m.renderHelp()
 	}
-	bodyH := max(m.height-2, 3)
+	bodyH := max(m.height-topBarHeight-1, 3)
 	body := lipgloss.JoinHorizontal(lipgloss.Top,
 		m.renderSidebar(bodyH),
 		m.renderRightPane(max(m.width-sidebarWidth-1, 10), bodyH),
@@ -341,23 +354,21 @@ func (m Model) View() string {
 }
 
 func (m Model) renderTopBar() string {
-	left := m.theme.accent().Bold(true).Render(" lazytilt ")
+	title := m.theme.accent().Bold(true).Render(" LAZYTILT ")
 	segs := make([]string, 0, len(m.instances))
 	for i, in := range m.instances {
 		tag := fmt.Sprintf("‹%d›", i+1)
 		if i == m.active {
-			label := tag + "●" + in.Label
-			if m.view != nil {
-				e, o, t := m.view.Counts()
-				label = fmt.Sprintf("%s ✕%d ✓%d/%d", label, e, o, t)
-			}
-			segs = append(segs, m.theme.header().Render(label))
+			segs = append(segs, m.theme.header().Render(tag+" "+in.Label))
 		} else {
 			segs = append(segs, m.theme.muted().Render(tag+" "+in.Label))
 		}
 	}
-	bar := left + " " + strings.Join(segs, "  ")
-	return m.theme.topBar().Width(m.width).Render(ansi.Truncate(bar, m.width, "…"))
+	bar := " " + title + "   " + strings.Join(segs, "   ")
+	// Title/instances row + a full-width accent rule, so the header reads as a
+	// header without painting a (uneven) background band.
+	rule := m.theme.accent().Render(strings.Repeat("─", m.width))
+	return lipgloss.JoinVertical(lipgloss.Left, ansi.Truncate(bar, m.width, "…"), rule)
 }
 
 func (m Model) renderFooter() string {
@@ -376,7 +387,7 @@ func (m Model) renderFooter() string {
 		}
 		inner = lipgloss.NewStyle().Foreground(c).Render(ansi.Truncate(" "+m.statusMsg, m.width, "…"))
 	} else {
-		keys := " ↑↓ move · r trigger · e/d enable·disable · ⏎ logs · / filter · f follow · L level · s disabled · [ ] instance · T theme · ? help · q quit"
+		keys := " ↑↓ move · r trigger · e/d enable·disable · ⏎ logs · / filter · f follow · L level · s disabled · 1-9/[ ] instance · T theme · ? help · q quit"
 		inner = ansi.Truncate(keys, m.width, "…")
 	}
 	return m.theme.footer().Width(m.width).Render(inner)
@@ -390,6 +401,7 @@ func (m Model) renderHelp() string {
 		"  ⏎ / tab      focus logs / toggle pane",
 		"  esc          back to sidebar",
 		"  [  ]         previous / next Tilt instance",
+		"  1 … 9      jump directly to instance N",
 		"  r            trigger (rebuild) selected resource",
 		"  e  d         enable / disable selected resource",
 		"  /            filter (resources or logs, by focus)",

@@ -10,7 +10,8 @@ import (
 )
 
 // TestSolarizedColorsRendered forces a truecolor profile and asserts the frame
-// actually emits the Solarized Light palette (background base3, blue accent).
+// emits the Solarized Light foreground palette (blue accent, base01 text). We
+// don't paint a background, so only foreground escapes are expected.
 func TestSolarizedColorsRendered(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	defer lipgloss.SetColorProfile(termenv.Ascii)
@@ -22,11 +23,11 @@ func TestSolarizedColorsRendered(t *testing.T) {
 
 	frame := m.View()
 	for _, want := range []string{
-		"48;2;253;246;227", // base3 background (#fdf6e3)
-		"38;2;38;139;210",  // blue accent (#268bd2)
+		"38;2;38;139;210", // blue accent (#268bd2) — header title + rule
+		"38;2;88;110;117", // base01 text (#586e75)
 	} {
 		if !strings.Contains(frame, want) {
-			t.Errorf("frame missing Solarized escape %q", want)
+			t.Errorf("frame missing Solarized foreground escape %q", want)
 		}
 	}
 }

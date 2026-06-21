@@ -61,26 +61,31 @@ func (m Model) renderSidebar(h int) string {
 	lines := make([]string, 0, h)
 	for i, r := range vis {
 		st := r.State()
-		block := lipgloss.NewStyle().Foreground(m.theme.StatusColor(st)).Render("▌")
+		g := statusGlyph(st)
 
+		if i == m.selected {
+			// Selected row: a single reverse-video bar spanning the full width.
+			// Built as plain text (no inline ANSI) so the highlight is uniform.
+			text := "▶ "
+			if g != "" {
+				text += g + " "
+			}
+			text += r.Name()
+			text = ansi.Truncate(text, sidebarWidth, "…")
+			lines = append(lines, lipgloss.NewStyle().Reverse(true).Bold(true).Width(sidebarWidth).Render(text))
+			continue
+		}
+
+		block := lipgloss.NewStyle().Foreground(m.theme.StatusColor(st)).Render("▌")
 		nameStyle := lipgloss.NewStyle().Foreground(m.theme.Text)
 		if st == tilt.StatusDisabled {
 			nameStyle = m.theme.muted()
 		}
-		ind := " "
-		if i == m.selected {
-			ind = m.theme.accent().Render("▶")
-			nameStyle = nameStyle.Bold(true)
-		}
-		row := ind + block + " " + nameStyle.Render(r.Name())
+		row := " " + block + " " + nameStyle.Render(r.Name())
 		if st == tilt.StatusError {
 			row += " " + lipgloss.NewStyle().Foreground(m.theme.Err).Render("✕")
 		}
-		row = ansi.Truncate(row, sidebarWidth, "…")
-		if i == m.selected {
-			row = lipgloss.NewStyle().Background(m.theme.Highlight).Width(sidebarWidth).Render(row)
-		}
-		lines = append(lines, row)
+		lines = append(lines, ansi.Truncate(row, sidebarWidth, "…"))
 	}
 	if len(vis) == 0 {
 		lines = append(lines, m.theme.muted().Render(" no resources"))

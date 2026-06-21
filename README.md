@@ -29,6 +29,7 @@ Themes: `--theme solarized-light` (default), `solarized-dark`, or `dark`; press
 | `⏎` / `tab` | focus the log pane / toggle pane |
 | `esc` | back to the resource list |
 | `[` `]` | previous / next Tilt instance (no restart) |
+| `1`…`9` | jump directly to that Tilt instance |
 | `r` | trigger (rebuild) the selected resource |
 | `e` / `d` | enable / disable the selected resource |
 | `/` | filter (resources or logs, depending on focus) |

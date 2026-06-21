@@ -46,7 +46,7 @@ func TestRenderFrame(t *testing.T) {
 	m = step(m, tea.KeyMsg{Type: tea.KeyDown})
 
 	frame := m.View()
-	for _, want := range []string{"lazytilt", "app-one", "app-two", "api", "worker", "k8s", "pod pending", "✕"} {
+	for _, want := range []string{"LAZYTILT", "app-one", "app-two", "api", "worker", "k8s", "pod pending", "✕"} {
 		if !strings.Contains(frame, want) {
 			t.Errorf("frame missing %q", want)
 		}
@@ -91,6 +91,32 @@ func TestSwitchInstanceResetsView(t *testing.T) {
 	}
 	if m.view != nil {
 		t.Error("view should reset to nil on instance switch (no restart, fresh fetch)")
+	}
+}
+
+func TestNumberKeySwitchesInstance(t *testing.T) {
+	m := New("", "localhost", 10350, "")
+	m = step(m, tea.WindowSizeMsg{Width: 110, Height: 26})
+	m = step(m, twoInstances()) // ‹1› app-one :10350 (active), ‹2› app-two :10360
+	m = step(m, viewMsg{port: 10350, view: mustView(t, "view_k8s.json")})
+	if m.currentPort() != 10350 {
+		t.Fatalf("start port = %d, want 10350", m.currentPort())
+	}
+
+	// Pressing "2" jumps directly to the second instance.
+	m = step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
+	if m.currentPort() != 10360 {
+		t.Errorf("after '2' port = %d, want 10360", m.currentPort())
+	}
+	if m.view != nil {
+		t.Error("view should reset on switch (no restart, fresh fetch)")
+	}
+
+	// A digit beyond the instance count is a no-op.
+	m = step(m, viewMsg{port: 10360, view: mustView(t, "view_compose.json")})
+	m = step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("9")})
+	if m.currentPort() != 10360 || m.view == nil {
+		t.Error("'9' with two instances should be a no-op")
 	}
 }
 
