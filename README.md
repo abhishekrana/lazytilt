@@ -7,19 +7,6 @@ multiple Tilt instances running on the same machine without restarting** — han
 when you have several `tilt up` sessions going at once. Kubernetes and
 docker-compose instances render through one consistent UI.
 
-```
-┌ lazytilt   ‹1› app-one  ‹2›●app-two ✕0 ✓3/4 ───────────────────────────────────────────────┐
-├──────────────────────┬──────────────────────────────────────────────────────────────────────┤
-│ ▌ (Tiltfile)         │ web · compose · container · healthy · ✓ ok                            │
-│▶▌ web                │ level all  [follow on]                                                │
-│ ▌ metrics            │──────────────────────────────────────────────────────────────────── │
-│ ▌ queue              │ request handled in 4ms                                                │
-│                      │ ready                                                                 │
-├──────────────────────┴──────────────────────────────────────────────────────────────────────┤
-│ ↑↓ move · r trigger · e/d enable·disable · ⏎ logs · / filter · f follow · [ ] instance · ?    │
-└────────────────────────────────────────────────────────────────────────────────────────────────┘
-```
-
 ## Install / run
 
 ```sh
@@ -30,6 +17,9 @@ go build -o lazytilt .
 lazytilt auto-discovers running `tilt up` processes (Linux, via `/proc`) and
 reads each one's `--port` / `TILT_PORT`. If none are found it falls back to
 `--host`/`--port` (defaults `localhost:10350`).
+
+Themes: `--theme solarized-light` (default), `solarized-dark`, or `dark`; press
+`T` in-app to cycle.
 
 ## Keys
 
@@ -46,6 +36,7 @@ reads each one's `--port` / `TILT_PORT`. If none are found it falls back to
 | `L` | cycle log level (all / errors / warnings) |
 | `c` | clear the log text filter |
 | `s` | show/hide disabled resources |
+| `T` | cycle color theme |
 | `g` / `G` | jump to top / bottom of logs |
 | `?` | help |
 | `q` / `ctrl+c` | quit |
