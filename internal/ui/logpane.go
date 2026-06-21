@@ -61,6 +61,7 @@ func (m *Model) setLogs() {
 	flt := strings.ToLower(m.logFilter)
 	out := make([]string, 0, 64)
 	for ln := range strings.SplitSeq(text, "\n") {
+		ln = sanitizeLogLine(ln)
 		if flt != "" && !strings.Contains(strings.ToLower(ansi.Strip(ln)), flt) {
 			continue
 		}
@@ -70,6 +71,36 @@ func (m *Model) setLogs() {
 	if m.follow {
 		m.vp.GotoBottom()
 	}
+}
+
+// sanitizeLogLine neutralizes terminal control characters that would corrupt the
+// TUI layout. Notably curl/progress output uses carriage returns to redraw a line
+// in place; rendered verbatim, a \r jumps the cursor to column 0 of the whole
+// screen and overwrites the sidebar. We keep only the text after the final \r
+// (what a terminal would ultimately display), turn tabs into spaces, and drop
+// other C0 controls. ESC is preserved so SGR color sequences still render.
+func sanitizeLogLine(s string) string {
+	if i := strings.LastIndexByte(s, '\r'); i >= 0 {
+		s = s[i+1:]
+	}
+	if !strings.ContainsFunc(s, func(r rune) bool { return r == '\t' || (r < 0x20 && r != 0x1b) }) {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r == '\t':
+			b.WriteString("  ")
+		case r == 0x1b:
+			b.WriteRune(r)
+		case r < 0x20:
+			// drop other C0 control characters
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func (m Model) renderRightPane(w, h int) string {
