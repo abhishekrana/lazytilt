@@ -27,9 +27,12 @@ const (
 	modeLogFilter
 )
 
-// topBarHeight is the rendered height of the header (title/instances row plus an
-// accent underline rule).
-const topBarHeight = 2
+// topBarHeight / footerHeight are the rendered heights of the header and footer:
+// each is a content row plus an accent rule line, framing the body symmetrically.
+const (
+	topBarHeight = 2
+	footerHeight = 2
+)
 
 // Model is the root Bubble Tea model.
 type Model struct {
@@ -104,7 +107,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		bodyH := max(m.height-topBarHeight-1, 3)
+		bodyH := max(m.height-topBarHeight-footerHeight, 3)
 		m.vp.Width = max(m.width-sidebarWidth-1, 10)
 		m.vp.Height = max(bodyH-3, 1)
 		m.setLogs()
@@ -340,7 +343,7 @@ func (m Model) View() string {
 	if m.width == 0 || m.height == 0 {
 		return "loading…"
 	}
-	bodyH := max(m.height-topBarHeight-1, 3)
+	bodyH := max(m.height-topBarHeight-footerHeight, 3)
 	body := lipgloss.JoinHorizontal(lipgloss.Top,
 		m.renderSidebar(bodyH),
 		m.renderRightPane(max(m.width-sidebarWidth-1, 10), bodyH),
@@ -371,21 +374,25 @@ func (m Model) renderTopBar() string {
 }
 
 func (m Model) renderFooter() string {
-	if m.mode != modeNormal {
-		return m.theme.footer().Width(m.width).Render(fmt.Sprintf(" search logs: %s▏", m.typing))
-	}
-	inner := ""
-	if m.statusMsg != "" {
+	// A full-width accent rule above the keys, mirroring the header rule below the
+	// title so the body is framed symmetrically.
+	rule := m.theme.accent().Render(strings.Repeat("─", m.width))
+
+	var inner string
+	switch {
+	case m.mode != modeNormal:
+		inner = fmt.Sprintf(" search logs: %s▏", m.typing)
+	case m.statusMsg != "":
 		c := m.theme.OK
 		if m.statusErr {
 			c = m.theme.Err
 		}
 		inner = lipgloss.NewStyle().Foreground(c).Render(ansi.Truncate(" "+m.statusMsg, m.width, "…"))
-	} else {
+	default:
 		keys := " ↑↓ move · r trigger · e/d enable·disable · ⏎ logs · / search logs · f follow · L level · s disabled · 1-9/[ ] instance · T theme · ? help · q quit"
 		inner = ansi.Truncate(keys, m.width, "…")
 	}
-	return m.theme.footer().Width(m.width).Render(inner)
+	return lipgloss.JoinVertical(lipgloss.Left, rule, m.theme.footer().Width(m.width).Render(inner))
 }
 
 // helpBox is the floating help popup (a bordered box, centered by overlayCenter).
