@@ -1,0 +1,52 @@
+{
+  "uiSession": { "status": { "runningTiltBuild": { "version": "0.35.0" } } },
+  "tiltStartTime": "2026-01-02T08:53:17.704564415Z",
+  "isComplete": true,
+  "uiResources": [
+    {
+      "metadata": { "name": "(Tiltfile)" },
+      "status": { "updateStatus": "ok", "runtimeStatus": "not_applicable", "order": 0,
+        "disableStatus": { "state": "None", "sources": [] } }
+    },
+    {
+      "metadata": { "name": "api" },
+      "status": { "updateStatus": "ok", "runtimeStatus": "ok", "order": 3,
+        "disableStatus": { "state": "Enabled", "enabledCount": 1 },
+        "k8sResourceInfo": { "podName": "api-pod-1", "podStatus": "Running", "spanID": "pod:api" },
+        "buildHistory": [ { "error": "", "spanID": "build:6" } ] }
+    },
+    {
+      "metadata": { "name": "worker" },
+      "status": { "updateStatus": "error", "runtimeStatus": "pending", "order": 4,
+        "disableStatus": { "state": "Enabled", "enabledCount": 1 },
+        "k8sResourceInfo": { "podName": "", "podStatus": "" },
+        "buildHistory": [ { "error": "Custom build failed: exit status 1", "spanID": "build:7" } ] }
+    },
+    {
+      "metadata": { "name": "db" },
+      "status": { "updateStatus": "ok", "runtimeStatus": "ok", "order": 7,
+        "disableStatus": { "state": "Enabled", "enabledCount": 1 },
+        "k8sResourceInfo": { "podName": "db-pod-0", "podStatus": "Running", "podRestarts": 2, "spanID": "pod:db" } }
+    },
+    {
+      "metadata": { "name": "batch-job" },
+      "status": { "updateStatus": "ok", "runtimeStatus": "ok", "order": 9,
+        "disableStatus": { "state": "Disabled", "disabledCount": 1 } }
+    }
+  ],
+  "logList": {
+    "spans": {
+      "": {},
+      "build:7": { "manifestName": "worker" },
+      "pod:api": { "manifestName": "api" }
+    },
+    "segments": [
+      { "time": "2026-01-02T08:53:17.7Z", "text": "Tilt started\n", "level": "INFO" },
+      { "spanId": "pod:api", "time": "2026-01-02T08:54:00Z", "text": "listening on :8080\n", "level": "INFO" },
+      { "spanId": "build:7", "time": "2026-01-02T08:55:00Z", "text": "build step failed\n", "level": "ERROR" },
+      { "spanId": "build:7", "time": "2026-01-02T08:55:01Z", "text": "exit status 1\n", "level": "ERROR" }
+    ],
+    "fromCheckpoint": 0,
+    "toCheckpoint": 4
+  }
+}

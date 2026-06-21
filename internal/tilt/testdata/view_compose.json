@@ -1,0 +1,43 @@
+{
+  "uiSession": { "status": { "runningTiltBuild": { "version": "0.35.0" } } },
+  "tiltStartTime": "2026-01-02T08:46:08.6Z",
+  "isComplete": true,
+  "uiResources": [
+    {
+      "metadata": { "name": "(Tiltfile)" },
+      "status": { "updateStatus": "ok", "runtimeStatus": "not_applicable", "order": 0,
+        "disableStatus": { "state": "None", "sources": [] } }
+    },
+    {
+      "metadata": { "name": "web" },
+      "status": { "updateStatus": "ok", "runtimeStatus": "ok", "order": 5,
+        "disableStatus": { "state": "Enabled", "enabledCount": 1 },
+        "composeResourceInfo": { "healthStatus": "healthy" } }
+    },
+    {
+      "metadata": { "name": "metrics" },
+      "status": { "updateStatus": "ok", "runtimeStatus": "ok", "order": 11,
+        "disableStatus": { "state": "Enabled", "enabledCount": 1 },
+        "composeResourceInfo": { "healthStatus": "healthy" },
+        "endpointLinks": [ { "url": "http://localhost:8080/" } ] }
+    },
+    {
+      "metadata": { "name": "queue" },
+      "status": { "updateStatus": "none", "runtimeStatus": "none", "order": 21,
+        "disableStatus": { "state": "Enabled", "enabledCount": 1 },
+        "composeResourceInfo": { "healthStatus": "" } }
+    }
+  ],
+  "logList": {
+    "spans": {
+      "": {},
+      "pod:web": { "manifestName": "web" }
+    },
+    "segments": [
+      { "spanId": "pod:web", "time": "2026-01-02T08:47:00Z", "text": "request handled in 4ms\n", "level": "INFO" },
+      { "spanId": "pod:web", "time": "2026-01-02T08:47:01Z", "text": "ready\n", "level": "INFO" }
+    ],
+    "fromCheckpoint": 0,
+    "toCheckpoint": 2
+  }
+}
