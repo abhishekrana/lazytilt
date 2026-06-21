@@ -1,0 +1,63 @@
+# CLAUDE.md
+
+Guidance for working in this repo. Read before making changes.
+
+## What this is
+
+`lazytilt` is a terminal UI (Go + Bubble Tea) for [Tilt](https://tilt.dev), modeled on
+lazygit/lazydocker. It hot-switches between multiple locally-running Tilt instances without a
+restart and renders Kubernetes and docker-compose instances through one consistent UI.
+
+Module path: `github.com/abhishekrana/lazytilt`.
+
+## Build / test / run
+
+```sh
+go build ./... && go vet ./... && go test ./...   # before every commit
+go run .                                           # launch the TUI
+go run . --port 10351 --theme solarized-dark       # fallback instance + theme
+```
+
+- Tests are **hermetic** by default (decode against `internal/tilt/testdata/*.json`, render the
+  Bubble Tea model and assert on the frame string).
+- The live smoke test hits real running Tilts and is gated: `LAZYTILT_LIVE=1 go test ./internal/ui -run TestLiveSmoke -v`.
+- Color tests force a truecolor profile via `lipgloss.SetColorProfile(termenv.TrueColor)` because
+  lipgloss strips color under the default (Ascii) profile in tests.
+
+## Architecture
+
+```
+main.go                 flag parse + tea.NewProgram
+internal/tilt/          one Tilt instance: client + decode + actions (no UI)
+  types.go              hand-rolled View/UIResource/LogList structs (camelCase JSON)
+  client.go             GET /api/view (+ X-Tilt-Token), ParseView
+  status.go             updateStatus/runtimeStatus -> combined Status; backend + runtime line
+  logs.go               span->manifest log assembly
+  actions.go            shell out: tilt trigger|enable|disable <res> --port <port>
+internal/discovery/     scan /proc for `tilt up` processes -> []Instance (host/port/label)
+internal/ui/            Bubble Tea: app.go (model/Update/View), sidebar, logpane, theme, messages
+```
+
+Data flow: a 1s tick fetches `GET /api/view` for the active instance; the websocket is intentionally
+**not** used (polling is simpler and was the deliberate choice). Actions shell out to the `tilt` CLI
+scoped by `--port`. Discovery re-runs every ~5 ticks so start/stop is reflected live.
+
+## Conventions & gotchas (important)
+
+- **Never commit real names.** Test fixtures, examples, and docs use mock names (`api`, `worker`,
+  `db`, `web`, `metrics`, instances `app-one`/`app-two`). Do not paste resource/pod/container names,
+  paths, or logs captured from a real local Tilt into the repo.
+- **Don't import `github.com/tilt-dev/tilt`.** It drags in ~22 k8s.io modules. We hand-roll the
+  minimal decode structs in `internal/tilt/types.go`. Tilt's JSON is **camelCase**.
+- **No painted backgrounds.** Theming is foreground-only; we rely on the terminal's own background so
+  the screen stays even (painting a bg fights Tilt's log ANSI and looked patchy). See `internal/ui/theme.go`.
+- **Sanitize log output.** `sanitizeLogLine` strips carriage returns (curl/progress output) and other
+  C0 controls before rendering — verbatim `\r` jumps the cursor to column 0 and corrupts the layout.
+- **Keep it simple.** Flat resource list (no grouping), minimal panels. Prefer the smallest change.
+- **Commits:** do not add `Co-Authored-By` lines.
+
+## Verifying UI changes
+
+Tests render the model and assert on `View()`. For a real visual check, run the binary in a pty with
+a window size set (it shows `loading…` until it gets dimensions), e.g. drive it with Python's `pty`
+and `TIOCSWINSZ`. Set `COLORTERM=truecolor` to see theme colors.
