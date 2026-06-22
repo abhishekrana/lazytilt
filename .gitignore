@@ -8,6 +8,12 @@
 *.so
 *.dylib
 
+# Build output (task build)
+/bin/
+
+# Task runner checksum cache
+.task/
+
 # Test binary, built with `go test -c`
 *.test
 

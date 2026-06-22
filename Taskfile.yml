@@ -1,0 +1,72 @@
+version: "3"
+
+vars:
+  BIN: bin/lazytilt
+  PKG: .
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  build:
+    desc: Compile the binary into ./bin
+    cmds:
+      - go build -o {{.BIN}} {{.PKG}}
+    sources:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+    generates:
+      - "{{.BIN}}"
+
+  run:
+    desc: Build and run lazytilt (forward flags after --, e.g. task run -- --port 10351)
+    deps: [build]
+    cmds:
+      - ./{{.BIN}} {{.CLI_ARGS}}
+
+  install:
+    desc: Install to $GOBIN / $GOPATH/bin
+    cmds:
+      - go install {{.PKG}}
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test ./...
+
+  test-live:
+    desc: Run the gated live smoke test against running Tilts
+    cmds:
+      - LAZYTILT_LIVE=1 go test ./internal/ui -run TestLiveSmoke -v
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  fmt:
+    desc: Format Go and Markdown
+    cmds:
+      - go fmt ./...
+      - npx --yes prettier --write --print-width 120 --prose-wrap always '**/*.md'
+
+  tidy:
+    desc: Tidy go.mod / go.sum
+    cmds:
+      - go mod tidy
+
+  check:
+    desc: Format, vet, test, build
+    cmds:
+      - task: fmt
+      - task: vet
+      - task: test
+      - task: build
+
+  clean:
+    desc: Remove built artifacts
+    cmds:
+      - rm -rf bin/
