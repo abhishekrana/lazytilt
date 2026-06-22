@@ -9,15 +9,37 @@ docker-compose instances render through one consistent UI.
 It opens on a cross-instance **overview** (`‹1›`) summarizing the health of every discovered instance; `esc` or a digit
 key drills into a single instance, and `1` brings the overview back.
 
-## Install / run
+## Install
+
+**Prebuilt binaries** (Linux and macOS; amd64 and arm64) are attached to every
+[release](https://github.com/abhishekrana/lazytilt/releases) — download the archive for your platform, extract, and put
+`lazytilt` on your `PATH`. For example:
 
 ```sh
-go build -o lazytilt .
-./lazytilt
+# Linux amd64 — adjust the version/platform to match the release
+curl -sSL https://github.com/abhishekrana/lazytilt/releases/latest/download/lazytilt_0.1.0_linux_amd64.tar.gz \
+  | tar -xz
+sudo mv lazytilt /usr/local/bin/
 ```
 
-lazytilt auto-discovers running `tilt up` processes (Linux, via `/proc`) and reads each one's `--port` / `TILT_PORT`. If
-none are found it falls back to `--host`/`--port` (defaults `localhost:10350`).
+**With Go** (1.25+) you can install the latest release straight from source:
+
+```sh
+go install github.com/abhishekrana/lazytilt@latest
+```
+
+**From a checkout** (for development):
+
+```sh
+go build -o lazytilt . && ./lazytilt
+```
+
+`lazytilt --version` prints the build version.
+
+## Run
+
+lazytilt auto-discovers running `tilt up` processes (Linux via `/proc`, macOS via `ps`/`lsof`) and reads each one's
+`--port` / `TILT_PORT`. If none are found it falls back to `--host`/`--port` (defaults `localhost:10350`).
 
 Themes: `--theme solarized-light` (default), `solarized-dark`, or `dark`; press `T` in-app to cycle.
 

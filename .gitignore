@@ -11,6 +11,9 @@
 # Build output (task build)
 /bin/
 
+# GoReleaser output
+/dist/
+
 # Task runner checksum cache
 .task/
 
