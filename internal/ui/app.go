@@ -124,10 +124,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		bodyH := max(m.height-topBarHeight-footerHeight, 3)
 		m.vp.Width = max(m.width-sidebarWidth-1, 10)
-		m.vp.Height = max(bodyH-3, 1)
-		m.setLogs()
+		m.setLogs() // setLogs owns vp.Height (it varies with the detail strip)
 		return m, nil
 
 	case tea.KeyMsg:
@@ -179,6 +177,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusErr = false
 		}
 		return m, fetchCmd(m.currentHost(), m.currentPort(), m.token)
+
+	case notifyMsg:
+		m.statusMsg = msg.text
+		m.statusErr = msg.err
+		return m, nil
 	}
 	return m, nil
 }
@@ -235,11 +238,7 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.showHelp = true
 		return m, nil
 	case "esc":
-		if m.showHelp {
-			m.showHelp = false
-		} else {
-			m.focus = focusSidebar
-		}
+		m.focus = focusSidebar
 		return m, nil
 	case "tab":
 		if m.focus == focusSidebar {
@@ -288,6 +287,10 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.clampSelection()
 		m.setLogs()
 		return m, nil
+	case "o":
+		return m.endpointAction(false)
+	case "y":
+		return m.endpointAction(true)
 	case "T":
 		m.theme = m.theme.next()
 		return m, nil
@@ -419,6 +422,25 @@ func (m Model) fetchAllCmds() []tea.Cmd {
 	return cmds
 }
 
+// endpointAction opens (toClipboard=false) or copies (toClipboard=true) the
+// selected resource's first endpoint URL, or reports that it has none.
+func (m Model) endpointAction(toClipboard bool) (tea.Model, tea.Cmd) {
+	r, ok := m.selectedResource()
+	if !ok {
+		return m, nil
+	}
+	u := r.FirstEndpointURL()
+	if u == "" {
+		m.statusMsg = "no endpoint for " + r.Name()
+		m.statusErr = true
+		return m, nil
+	}
+	if toClipboard {
+		return m, copyURLCmd(u)
+	}
+	return m, openURLCmd(u)
+}
+
 func (m Model) runAction(kind tilt.ActionKind) (tea.Model, tea.Cmd) {
 	r, ok := m.selectedResource()
 	if !ok {
@@ -516,7 +538,7 @@ func (m Model) renderFooter() string {
 		}
 		inner = lipgloss.NewStyle().Foreground(c).Render(ansi.Truncate(" "+m.statusMsg, m.width, "…"))
 	default:
-		keys := " ↑↓ move · r trigger · e/d enable·disable · ⏎ logs · / search logs · f follow · L level · s disabled · 1 overview · 2-9/[ ] instance · T theme · ? help · q quit"
+		keys := " ↑↓ move · r trigger · e/d enable·disable · ⏎ logs · / search · f follow · L level · s disabled · o/y endpoint · 1 overview · 2-9/[ ] instance · T theme · ? help · q quit"
 		inner = ansi.Truncate(keys, m.width, "…")
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rule, m.theme.footer().Width(m.width).Render(inner))
@@ -533,6 +555,7 @@ func (m Model) helpBox() string {
 		{"[  ]", "previous / next instance"},
 		{"r", "trigger / restart (asks y/n)"},
 		{"e  d", "enable / disable"},
+		{"o  y", "open / copy endpoint URL"},
 		{"/", "search logs (highlights matches)"},
 		{"f", "follow / tail logs"},
 		{"L", "cycle log level"},

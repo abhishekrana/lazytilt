@@ -1,0 +1,92 @@
+package ui
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/abhishekrana/lazytilt/internal/discovery"
+	"github.com/abhishekrana/lazytilt/internal/tilt"
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+// detailView builds a model on a synthetic instance and selects its first
+// resource, ready for the `i` detail toggle.
+func detailView(t *testing.T, v *tilt.View) Model {
+	t.Helper()
+	m := New("", "localhost", 10350, "")
+	m = step(m, tea.WindowSizeMsg{Width: 110, Height: 26})
+	m = step(m, instancesMsg{instances: []discovery.Instance{{Host: "localhost", Port: 10350, Label: "app"}}})
+	m = step(m, viewMsg{port: 10350, view: v})
+	m = step(m, tea.KeyMsg{Type: tea.KeyEsc}) // leave the overview landing screen
+	return m
+}
+
+func TestDetailStripSurfacesFetchedFields(t *testing.T) {
+	start := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	v := &tilt.View{UIResources: []tilt.UIResource{{
+		Metadata: tilt.ObjectMeta{Name: "api", Labels: map[string]string{"backend": "", "tier1": ""}},
+		Status: tilt.UIResourceStatus{
+			UpdateStatus:    "error",
+			RuntimeStatus:   "ok",
+			Order:           1,
+			EndpointLinks:   []tilt.Link{{URL: "http://localhost:8080"}},
+			K8sResourceInfo: &tilt.K8sResourceInfo{PodName: "api-7f9b9c", PodStatus: "Running", PodRestarts: 2},
+			BuildHistory: []tilt.BuildTerminated{{
+				Error:      "dial tcp 127.0.0.1:5432: connection refused",
+				StartTime:  start,
+				FinishTime: start.Add(1200 * time.Millisecond),
+			}},
+		},
+	}}}
+
+	// The strip is always on — no keypress needed beyond leaving the overview.
+	m := detailView(t, v)
+	frame := m.View()
+	t.Logf("\n%s", frame)
+
+	for _, want := range []string{
+		"api", "k8s", "pod api-7f9b9c", "restarts 2", "error", // header
+		"build ", "1.2s", // build duration
+		"http://localhost:8080", "o open · y copy", // endpoint
+		"labels", "backend", "tier1",
+	} {
+		if !strings.Contains(frame, want) {
+			t.Errorf("detail strip missing %q", want)
+		}
+	}
+
+	// The last build error is intentionally not surfaced here — the header's
+	// status glyph flags the failure and the full text lives in the logs.
+	if strings.Contains(frame, "connection refused") {
+		t.Error("last error should not appear in the detail strip")
+	}
+}
+
+func TestEndpointActionDispatch(t *testing.T) {
+	withEP := &tilt.View{UIResources: []tilt.UIResource{{
+		Metadata: tilt.ObjectMeta{Name: "api"},
+		Status: tilt.UIResourceStatus{
+			UpdateStatus:  "ok",
+			Order:         1,
+			EndpointLinks: []tilt.Link{{URL: "http://localhost:8080"}},
+		},
+	}}}
+	m := detailView(t, withEP)
+	if _, cmd := m.endpointAction(false); cmd == nil {
+		t.Error("open should dispatch a command when an endpoint is present")
+	}
+	if _, cmd := m.endpointAction(true); cmd == nil {
+		t.Error("copy should dispatch a command when an endpoint is present")
+	}
+
+	noEP := &tilt.View{UIResources: []tilt.UIResource{{
+		Metadata: tilt.ObjectMeta{Name: "worker"},
+		Status:   tilt.UIResourceStatus{UpdateStatus: "ok", Order: 1},
+	}}}
+	m = detailView(t, noEP)
+	m = step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
+	if !m.statusErr || !strings.Contains(m.statusMsg, "no endpoint for worker") {
+		t.Errorf("expected a no-endpoint notice, got err=%v msg=%q", m.statusErr, m.statusMsg)
+	}
+}

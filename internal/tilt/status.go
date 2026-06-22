@@ -3,6 +3,7 @@ package tilt
 import (
 	"fmt"
 	"sort"
+	"time"
 )
 
 // Status is the single, backend-agnostic state we render for a resource. It
@@ -111,6 +112,52 @@ func (r *UIResource) LastError() string {
 		return r.Status.BuildHistory[0].Error
 	}
 	return ""
+}
+
+// LastBuildDuration returns how long the most recent build with valid
+// timestamps took, and whether one was found. Used by the detail view.
+func (r *UIResource) LastBuildDuration() (time.Duration, bool) {
+	for i := range r.Status.BuildHistory {
+		b := r.Status.BuildHistory[i]
+		if !b.StartTime.IsZero() && !b.FinishTime.IsZero() && !b.FinishTime.Before(b.StartTime) {
+			return b.FinishTime.Sub(b.StartTime), true
+		}
+	}
+	return 0, false
+}
+
+// Restarts returns the running pod's restart count (k8s only; 0 otherwise).
+func (r *UIResource) Restarts() int {
+	if r.Status.K8sResourceInfo != nil {
+		return r.Status.K8sResourceInfo.PodRestarts
+	}
+	return 0
+}
+
+// Endpoints returns the resource's endpoint links (e.g. forwarded ports).
+func (r *UIResource) Endpoints() []Link { return r.Status.EndpointLinks }
+
+// FirstEndpointURL returns the first non-empty endpoint URL, or "" if none.
+func (r *UIResource) FirstEndpointURL() string {
+	for _, l := range r.Status.EndpointLinks {
+		if l.URL != "" {
+			return l.URL
+		}
+	}
+	return ""
+}
+
+// LabelNames returns the resource's label keys, sorted, for display.
+func (r *UIResource) LabelNames() []string {
+	if len(r.Metadata.Labels) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(r.Metadata.Labels))
+	for k := range r.Metadata.Labels {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Resources returns the resources sorted by Tilt's own order, matching the web UI.

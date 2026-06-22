@@ -45,6 +45,16 @@ func (m *Model) setLogs() {
 		return
 	}
 	r, ok := m.selectedResource()
+
+	// Size the viewport around the always-on detail strip: header + controls +
+	// separator take 3 rows, plus one row per detail line for the selection.
+	bodyH := max(m.height-topBarHeight-footerHeight, 3)
+	strip := 0
+	if ok {
+		strip = len(m.detailLines(r, m.vp.Width))
+	}
+	m.vp.Height = max(bodyH-3-strip, 1)
+
 	if !ok || m.view == nil {
 		m.vp.SetContent("")
 		return
@@ -190,11 +200,10 @@ func (m Model) renderRightPane(w, h int) string {
 
 	sep := lipgloss.NewStyle().Foreground(m.theme.Border).Render(strings.Repeat("─", w))
 
-	body := lipgloss.JoinVertical(lipgloss.Left,
-		ansi.Truncate(header, w, "…"),
-		ansi.Truncate(controls, w, "…"),
-		sep,
-		m.vp.View(),
-	)
-	return box.Render(body)
+	rows := []string{ansi.Truncate(header, w, "…")}
+	if ok {
+		rows = append(rows, m.detailLines(r, w)...)
+	}
+	rows = append(rows, ansi.Truncate(controls, w, "…"), sep, m.vp.View())
+	return box.Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
 }

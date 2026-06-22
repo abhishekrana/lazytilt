@@ -34,6 +34,13 @@ type actionResultMsg struct {
 	err      error
 }
 
+// notifyMsg carries a one-off status line (e.g. the result of opening or copying
+// an endpoint) to surface in the footer.
+type notifyMsg struct {
+	text string
+	err  bool
+}
+
 func tickCmd() tea.Cmd {
 	return tea.Tick(pollInterval, func(time.Time) tea.Msg { return tickMsg{} })
 }
