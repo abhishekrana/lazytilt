@@ -12,6 +12,18 @@ Module path: `github.com/abhishekrana/lazytilt`.
 
 ## Build / test / run
 
+Day-to-day work goes through Taskfile (`task --list` to see all); `./bootstrap.sh` installs the `task` CLI itself.
+
+- `task build` — compile to `bin/lazytilt`
+- `task run` — build + run the TUI (forward flags after `--`, e.g. `task run -- --port 10351 --theme solarized-dark`)
+- `task test` / `task test-live` — `go test ./...` / the gated live smoke test below
+- `task vet` — `go vet ./...`
+- `task fmt` — `go fmt` + `prettier --write` on markdown (120 cols)
+- `task check` — fmt + vet + test + build (use before pushing)
+- `task tidy` — `go mod tidy`
+
+The equivalent without task:
+
 ```sh
 go build ./... && go vet ./... && go test ./...   # before every commit
 go run .                                           # launch the TUI
