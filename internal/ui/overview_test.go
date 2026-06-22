@@ -53,9 +53,8 @@ func TestOverviewAcrossBackends(t *testing.T) {
 	m = step(m, viewMsg{port: 10350, view: mustView(t, "view_k8s.json")})
 	m = step(m, viewMsg{port: 10360, view: failCompose(t)})
 
-	m = step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("0")})
 	if !m.overview {
-		t.Fatal("'0' should open the overview")
+		t.Fatal("the overview should be the starting screen")
 	}
 
 	frame := ansi.Strip(m.View())
@@ -81,8 +80,8 @@ func TestOverviewEnterJumpsToResource(t *testing.T) {
 	m = step(m, viewMsg{port: 10350, view: mustView(t, "view_k8s.json")})
 	m = step(m, viewMsg{port: 10360, view: failCompose(t)})
 
-	m = step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("0")})
-	// rows: [0] app-one header, [1] worker (its only error). Select worker.
+	// Overview is the landing screen. rows: [0] app-one header, [1] worker
+	// (its only error). Select worker, then open it.
 	m = step(m, tea.KeyMsg{Type: tea.KeyDown})
 	m = step(m, tea.KeyMsg{Type: tea.KeyEnter})
 
@@ -100,6 +99,33 @@ func TestOverviewEnterJumpsToResource(t *testing.T) {
 	}
 }
 
+func TestOverviewIsLandingScreenAndToggles(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(termenv.Ascii)
+
+	m := New("", "localhost", 10350, "")
+	m = step(m, tea.WindowSizeMsg{Width: 160, Height: 40})
+	m = step(m, twoInstances())
+	m = step(m, viewMsg{port: 10350, view: mustView(t, "view_k8s.json")})
+
+	if !m.overview {
+		t.Fatal("the app should start on the overview")
+	}
+	if !strings.Contains(ansi.Strip(m.View()), "OVERVIEW") {
+		t.Error("landing frame should be the overview")
+	}
+
+	// esc drills into the single-instance view; 0 returns to the overview.
+	m = step(m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m.overview {
+		t.Error("esc should leave the overview")
+	}
+	m = step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("0")})
+	if !m.overview {
+		t.Error("0 should reopen the overview")
+	}
+}
+
 func TestOverviewOnlyFailingHidesHealthy(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	defer lipgloss.SetColorProfile(termenv.Ascii)
@@ -109,8 +135,8 @@ func TestOverviewOnlyFailingHidesHealthy(t *testing.T) {
 	m = step(m, twoInstances())
 	m = step(m, viewMsg{port: 10350, view: mustView(t, "view_k8s.json")})     // has an error
 	m = step(m, viewMsg{port: 10360, view: mustView(t, "view_compose.json")}) // all healthy
-	m = step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("0")})
 
+	// Overview is the landing screen.
 	// The port appears only in the overview header, never in the top-bar tabs.
 	if before := ansi.Strip(m.View()); !strings.Contains(before, ":10360") {
 		t.Fatalf("healthy instance header should be present before only-failing:\n%s", before)

@@ -98,6 +98,7 @@ func New(token, host string, port int, themeName string) Model {
 		theme:        th,
 		views:        map[int]*tilt.View{},
 		viewErrs:     map[int]error{},
+		overview:     true, // land on the cross-instance overview; esc/digit drills in
 	}
 }
 

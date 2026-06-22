@@ -67,6 +67,7 @@ func TestCarriageReturnLogsDoNotCorrupt(t *testing.T) {
 	m = step(m, tea.WindowSizeMsg{Width: 90, Height: 24})
 	m = step(m, instancesMsg{instances: []discovery.Instance{{Host: "localhost", Port: 10350, Label: "app"}}})
 	m = step(m, viewMsg{port: 10350, view: v})
+	m = step(m, tea.KeyMsg{Type: tea.KeyEsc}) // leave the overview to see the log pane
 
 	frame := m.View()
 	if strings.ContainsRune(frame, '\r') {

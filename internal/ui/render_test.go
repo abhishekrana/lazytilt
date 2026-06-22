@@ -21,6 +21,7 @@ func TestFocusIndicatorChangesFrame(t *testing.T) {
 	m = step(m, tea.WindowSizeMsg{Width: 100, Height: 24})
 	m = step(m, twoInstances())
 	m = step(m, viewMsg{port: 10350, view: mustView(t, "view_k8s.json")})
+	m = step(m, tea.KeyMsg{Type: tea.KeyEsc}) // leave the overview landing screen
 
 	sidebarFocused := m.View()
 	m = step(m, tea.KeyMsg{Type: tea.KeyTab})
@@ -61,6 +62,7 @@ func TestRenderFrame(t *testing.T) {
 	m = step(m, tea.WindowSizeMsg{Width: 110, Height: 26})
 	m = step(m, twoInstances())
 	m = step(m, viewMsg{port: 10350, view: mustView(t, "view_k8s.json")})
+	m = step(m, tea.KeyMsg{Type: tea.KeyEsc}) // leave the overview landing screen
 	// Select the failing k8s resource (index 2: (Tiltfile), api, worker).
 	m = step(m, tea.KeyMsg{Type: tea.KeyDown})
 	m = step(m, tea.KeyMsg{Type: tea.KeyDown})
@@ -83,6 +85,7 @@ func TestRenderCompose(t *testing.T) {
 	m = step(m, tea.WindowSizeMsg{Width: 110, Height: 26})
 	m = step(m, instancesMsg{instances: []discovery.Instance{{Host: "localhost", Port: 10360, Label: "app-two"}}})
 	m = step(m, viewMsg{port: 10360, view: mustView(t, "view_compose.json")})
+	m = step(m, tea.KeyMsg{Type: tea.KeyEsc}) // leave the overview landing screen
 	// Select web (index 1).
 	m = step(m, tea.KeyMsg{Type: tea.KeyDown})
 
@@ -168,6 +171,7 @@ func TestTriggerConfirmation(t *testing.T) {
 	m = step(m, tea.WindowSizeMsg{Width: 100, Height: 24})
 	m = step(m, twoInstances())
 	m = step(m, viewMsg{port: 10350, view: mustView(t, "view_k8s.json")})
+	m = step(m, tea.KeyMsg{Type: tea.KeyEsc})  // leave the overview landing screen
 	m = step(m, tea.KeyMsg{Type: tea.KeyDown}) // select "api" (index 1)
 
 	// r opens a confirmation and does NOT act yet.

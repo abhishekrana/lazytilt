@@ -49,7 +49,7 @@ internal/tilt/          one Tilt instance: client + decode + actions (no UI)
   actions.go            shell out: tilt trigger|enable|disable <res> --port <port>
 internal/discovery/     scan /proc for `tilt up` processes -> []Instance (host/port/label)
 internal/ui/            Bubble Tea: app.go (model/Update/View), sidebar, logpane, overview, theme, messages
-  overview.go           cross-instance ‹0› dashboard + top-bar health badges (errors-first, jump-to-resource)
+  overview.go           cross-instance ‹0› dashboard (the landing screen) + top-bar health badges; esc/digit drills in
 ```
 
 Data flow: a 1s tick fetches `GET /api/view` for **every** discovered instance, caching each by port in `Model.views`
