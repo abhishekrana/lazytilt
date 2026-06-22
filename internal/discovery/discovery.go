@@ -1,11 +1,15 @@
 // Package discovery finds Tilt instances running locally so lazytilt can switch
-// between them. On Linux it scans /proc for `tilt up` processes and reads each
-// one's --port / TILT_PORT and working directory. On other platforms it returns
-// nothing (callers fall back to the -host/-port flags).
+// between them. The per-platform process scan lives in the discovery_<goos>.go
+// files:
+//
+//   - Linux:  scans /proc for `tilt up` processes, reading each one's --port /
+//     TILT_PORT and working directory.
+//   - macOS:  lists processes with `ps` and resolves each match's working
+//     directory with `lsof` (there is no /proc).
+//   - other:  returns nothing (callers fall back to the -host/-port flags).
 package discovery
 
 import (
-	"os"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -21,25 +25,17 @@ type Instance struct {
 	PID   int
 }
 
-// Discover returns the set of locally running Tilt instances, sorted by port.
+// Discover returns the set of locally running Tilt instances, deduplicated by
+// port (first seen wins) and sorted by port. scanProcesses is platform-specific.
 func Discover() []Instance {
-	entries, err := os.ReadDir("/proc")
-	if err != nil {
-		return nil
-	}
 	seen := map[int]bool{}
 	var out []Instance
-	for _, e := range entries {
-		pid, err := strconv.Atoi(e.Name())
-		if err != nil {
+	for _, in := range scanProcesses() {
+		if in.Port == 0 || seen[in.Port] {
 			continue
 		}
-		inst, ok := inspect(pid)
-		if !ok || seen[inst.Port] {
-			continue
-		}
-		seen[inst.Port] = true
-		out = append(out, inst)
+		seen[in.Port] = true
+		out = append(out, in)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Port < out[j].Port })
 	disambiguate(out)
@@ -62,33 +58,54 @@ func disambiguate(insts []Instance) {
 	}
 }
 
-// inspect returns an Instance if pid is a `tilt up` process.
-func inspect(pid int) (Instance, bool) {
-	args, err := readArgs(pid)
-	if err != nil || len(args) < 2 {
-		return Instance{}, false
+// isTiltUp reports whether an argv is a `tilt up` invocation.
+func isTiltUp(args []string) bool {
+	if len(args) < 2 {
+		return false
 	}
 	if filepath.Base(args[0]) != "tilt" {
-		return Instance{}, false
+		return false
 	}
-	if !slices.Contains(args[1:], "up") {
-		return Instance{}, false
-	}
+	return slices.Contains(args[1:], "up")
+}
 
-	port := portFromArgs(args)
-	if port == 0 {
-		port = portFromEnv(pid)
+// parseTiltProcesses turns `ps -o pid=,args=` output into instances, using cwd to
+// resolve each process's working-directory label and env to read TILT_PORT when
+// the port isn't on the command line. The I/O is injected so the parser is pure
+// and unit-testable on any OS; the macOS scanner supplies the real lookups.
+func parseTiltProcesses(psOutput string, cwd func(pid int) string, env func(pid int) int) []Instance {
+	var insts []Instance
+	for line := range strings.SplitSeq(psOutput, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		pidStr, rest, ok := strings.Cut(line, " ")
+		if !ok {
+			continue
+		}
+		pid, err := strconv.Atoi(pidStr)
+		if err != nil {
+			continue
+		}
+		args := strings.Fields(rest)
+		if !isTiltUp(args) {
+			continue
+		}
+		port := portFromArgs(args)
+		if port == 0 && env != nil {
+			port = env(pid)
+		}
+		if port == 0 {
+			port = 10350 // Tilt's default
+		}
+		label := ""
+		if cwd != nil {
+			label = labelFromPath(cwd(pid))
+		}
+		insts = append(insts, Instance{Host: "localhost", Port: port, Label: label, PID: pid})
 	}
-	if port == 0 {
-		port = 10350 // Tilt's default
-	}
-
-	label := ""
-	if cwd, err := os.Readlink("/proc/" + strconv.Itoa(pid) + "/cwd"); err == nil {
-		label = labelFromPath(cwd)
-	}
-
-	return Instance{Host: "localhost", Port: port, Label: label, PID: pid}, true
+	return insts
 }
 
 // genericDirs are path components that don't usefully name a project, so we skip
@@ -129,28 +146,4 @@ func portFromArgs(args []string) int {
 		}
 	}
 	return 0
-}
-
-func portFromEnv(pid int) int {
-	b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/environ")
-	if err != nil {
-		return 0
-	}
-	for kv := range strings.SplitSeq(string(b), "\x00") {
-		if v, ok := strings.CutPrefix(kv, "TILT_PORT="); ok {
-			if p, err := strconv.Atoi(v); err == nil {
-				return p
-			}
-		}
-	}
-	return 0
-}
-
-func readArgs(pid int) ([]string, error) {
-	b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/cmdline")
-	if err != nil {
-		return nil, err
-	}
-	parts := strings.Split(strings.TrimRight(string(b), "\x00"), "\x00")
-	return parts, nil
 }

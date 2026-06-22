@@ -47,7 +47,7 @@ internal/tilt/          one Tilt instance: client + decode + actions (no UI)
   status.go             updateStatus/runtimeStatus -> combined Status; backend + runtime line
   logs.go               span->manifest log assembly
   actions.go            shell out: tilt trigger|enable|disable <res> --port <port>
-internal/discovery/     scan /proc for `tilt up` processes -> []Instance (host/port/label)
+internal/discovery/     find `tilt up` processes -> []Instance; Linux /proc, macOS ps/lsof (discovery_<goos>.go)
 internal/ui/            Bubble Tea: app.go (model/Update/View), sidebar, logpane, overview, theme, messages
   overview.go           cross-instance ‹1› dashboard (the landing screen) + top-bar health badges; esc/digit drills in
 ```
