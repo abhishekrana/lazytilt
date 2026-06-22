@@ -10,7 +10,7 @@ import (
 	"github.com/muesli/termenv"
 )
 
-func TestRestartAllConfirmation(t *testing.T) {
+func TestTriggerAllConfirmation(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	defer lipgloss.SetColorProfile(termenv.Ascii)
 
@@ -22,23 +22,23 @@ func TestRestartAllConfirmation(t *testing.T) {
 
 	// Targets exclude the (Tiltfile) pseudo-resource and the disabled batch-job,
 	// leaving api, worker, db.
-	if got := m.restartTargets(); len(got) != 3 {
-		t.Fatalf("restartTargets = %v, want 3 (api, worker, db)", got)
+	if got := m.triggerAllTargets(); len(got) != 3 {
+		t.Fatalf("triggerAllTargets = %v, want 3 (api, worker, db)", got)
 	}
 	for _, skip := range []string{"(Tiltfile)", "batch-job"} {
-		for _, n := range m.restartTargets() {
+		for _, n := range m.triggerAllTargets() {
 			if n == skip {
-				t.Errorf("restartTargets should not include %q", skip)
+				t.Errorf("triggerAllTargets should not include %q", skip)
 			}
 		}
 	}
 
 	// R asks to confirm and does NOT act yet.
 	m = step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("R")})
-	if m.mode != modeConfirm || !m.pendingRestartAll {
-		t.Fatalf("R should open a restart-all confirmation; mode=%v pending=%v", m.mode, m.pendingRestartAll)
+	if m.mode != modeConfirm || !m.pendingTriggerAll {
+		t.Fatalf("R should open a trigger-all confirmation; mode=%v pending=%v", m.mode, m.pendingTriggerAll)
 	}
-	if frame := ansi.Strip(m.View()); !strings.Contains(frame, "Restart all 3 resources in app-one?") {
+	if frame := ansi.Strip(m.View()); !strings.Contains(frame, "Trigger all 3 resources in app-one?") {
 		t.Errorf("confirmation prompt missing/!= expected:\n%s", frame)
 	}
 	if m.statusMsg != "" {
@@ -46,16 +46,16 @@ func TestRestartAllConfirmation(t *testing.T) {
 	}
 
 	// n cancels cleanly.
-	if c := step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")}); c.mode != modeNormal || c.pendingRestartAll {
-		t.Error("n should cancel the restart-all without acting")
+	if c := step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")}); c.mode != modeNormal || c.pendingTriggerAll {
+		t.Error("n should cancel the trigger-all without acting")
 	}
 
 	// y confirms and kicks off the batch.
 	y := step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
-	if y.mode != modeNormal || y.pendingRestartAll {
+	if y.mode != modeNormal || y.pendingTriggerAll {
 		t.Error("y should dismiss the confirmation")
 	}
-	if !strings.Contains(y.statusMsg, "restarting 3 resources") {
-		t.Errorf("expected a restart status, got %q", y.statusMsg)
+	if !strings.Contains(y.statusMsg, "triggering 3 resources") {
+		t.Errorf("expected a trigger status, got %q", y.statusMsg)
 	}
 }

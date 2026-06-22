@@ -73,7 +73,7 @@ type Model struct {
 	logFilter         string
 	pendingResource   string          // resource awaiting action confirmation
 	pendingAction     tilt.ActionKind // action awaiting confirmation
-	pendingRestartAll bool            // a "restart all" is awaiting confirmation
+	pendingTriggerAll bool            // a "trigger all" is awaiting confirmation
 
 	showHelp bool
 
@@ -128,10 +128,10 @@ func (m Model) currentLabel() string {
 	return m.fallbackHost
 }
 
-// restartTargets is the set of resource names a "restart all" would trigger in
+// triggerAllTargets is the set of resource names a "trigger all" would update in
 // the active instance: every enabled resource except the (Tiltfile) pseudo-
 // resource. Disabled resources are skipped (triggering one would just error).
-func (m Model) restartTargets() []string {
+func (m Model) triggerAllTargets() []string {
 	if m.view == nil {
 		return nil
 	}
@@ -293,9 +293,9 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "R":
-		if len(m.restartTargets()) > 0 {
+		if len(m.triggerAllTargets()) > 0 {
 			m.mode = modeConfirm
-			m.pendingRestartAll = true
+			m.pendingTriggerAll = true
 		}
 		return m, nil
 	case "d":
@@ -404,13 +404,13 @@ func (m Model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c":
 		return m, tea.Quit
 	case "y", "Y", "enter":
-		if m.pendingRestartAll {
-			targets := m.restartTargets()
+		if m.pendingTriggerAll {
+			targets := m.triggerAllTargets()
 			m.mode = modeNormal
-			m.pendingRestartAll = false
-			m.statusMsg = fmt.Sprintf("restarting %d resources…", len(targets))
+			m.pendingTriggerAll = false
+			m.statusMsg = fmt.Sprintf("triggering %d resources…", len(targets))
 			m.statusErr = false
-			return m, restartAllCmd(targets, m.currentPort())
+			return m, triggerAllCmd(targets, m.currentPort())
 		}
 		res, act := m.pendingResource, m.pendingAction
 		m.mode = modeNormal
@@ -421,7 +421,7 @@ func (m Model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	default:
 		m.mode = modeNormal
 		m.pendingResource = ""
-		m.pendingRestartAll = false
+		m.pendingTriggerAll = false
 		return m, nil
 	}
 }
@@ -498,8 +498,8 @@ func (m Model) View() string {
 // confirmBox is the action confirmation popup, centered by overlayCenter.
 func (m Model) confirmBox() string {
 	var title string
-	if m.pendingRestartAll {
-		title = fmt.Sprintf("Restart all %d resources in %s?", len(m.restartTargets()), m.currentLabel())
+	if m.pendingTriggerAll {
+		title = fmt.Sprintf("Trigger all %d resources in %s?", len(m.triggerAllTargets()), m.currentLabel())
 	} else {
 		verb := m.pendingAction.String()
 		if verb != "" {
@@ -512,7 +512,7 @@ func (m Model) confirmBox() string {
 		"",
 		m.theme.muted().Render("(y) yes        (n) no"),
 	}
-	// Grow the box to fit the title (a "Restart all N resources in <label>?"
+	// Grow the box to fit the title (a "Trigger all N resources in <label>?"
 	// prompt is wider than a single-resource one).
 	inner := 0
 	for _, ln := range lines {
@@ -576,7 +576,7 @@ func (m Model) renderFooter() string {
 		}
 		inner = lipgloss.NewStyle().Foreground(c).Render(ansi.Truncate(" "+m.statusMsg, m.width, "…"))
 	default:
-		keys := " ↑↓ move · r trigger · R restart-all · d enable/disable · ⏎ logs · / search · f follow · L level · o open in editor · s save logs · 1 overview · 2-9/[ ] instance · T theme · ? help · q quit"
+		keys := " ↑↓ move · r trigger · R trigger-all · d enable/disable · ⏎ logs · / search · f follow · L level · o open in editor · s save logs · 1 overview · 2-9/[ ] instance · T theme · ? help · q quit"
 		inner = ansi.Truncate(keys, m.width, "…")
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rule, m.theme.footer().Width(m.width).Render(inner))
@@ -591,8 +591,8 @@ func (m Model) helpBox() string {
 		{"F", "overview: show only failing"},
 		{"2 … 9", "jump to instance N"},
 		{"[  ]", "previous / next instance"},
-		{"r", "trigger / restart (asks y/n)"},
-		{"R", "restart all resources (asks y/n)"},
+		{"r", "trigger update (asks y/n)"},
+		{"R", "trigger all resources (asks y/n)"},
 		{"d", "enable / disable (asks y/n)"},
 		{"/", "search logs (highlights matches)"},
 		{"f", "follow / tail logs"},
