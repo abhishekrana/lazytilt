@@ -213,31 +213,35 @@ func (m Model) overviewSummary() string {
 	return " " + title + "   " + strings.Join(segs, m.theme.muted().Render(" · "))
 }
 
+// Overview column widths (display cells). Header and resource rows share these
+// offsets so the failing-resource sub-rows line up under their instance, with
+// generous gutters between columns.
+const (
+	ovTagW   = 5  // "‹2›" plus breathing room
+	ovNameW  = 22 // instance label / resource name
+	ovPortW  = 12 // ":10350"
+	ovBadgeW = 14 // ✕N ⟳N …N
+)
+
 func (m Model) renderOvHeader(i int, sel bool) string {
 	in := m.instances[i]
 	var c tilt.StatusCounts
 	if v := m.views[in.Port]; v != nil {
 		c = v.StatusCounts()
 	}
-	marker := "  "
-	if sel {
-		marker = m.theme.accent().Render("▶") + " "
-	}
 	tag := m.theme.accent().Render(fmt.Sprintf("‹%d›", i+1))
-	name := m.theme.header().Render(pad(in.Label, 16))
-	port := m.theme.muted().Render(pad(fmt.Sprintf(":%d", in.Port), 8))
+	name := m.theme.header().Render(in.Label)
+	port := m.theme.muted().Render(fmt.Sprintf(":%d", in.Port))
 	ok := lipgloss.NewStyle().Foreground(m.theme.OK).Render(fmt.Sprintf("✓%d/%d", c.OK, c.Total))
-	return marker + tag + " " + name + " " + port + "  " + pad2(m.ovBadges(in.Port, c), 18) + " " + ok
+	return ovMarker(m.theme, sel) +
+		cell(tag, ovTagW) + cell(name, ovNameW) + cell(port, ovPortW) +
+		cell(m.ovBadges(in.Port, c), ovBadgeW) + ok
 }
 
 func (m Model) renderOvResource(r tilt.UIResource, sel bool) string {
 	st := r.State()
-	marker := "     "
-	if sel {
-		marker = "   " + m.theme.accent().Render("▶") + " "
-	}
 	glyph := lipgloss.NewStyle().Foreground(m.theme.StatusColor(st)).Render(statusGlyph(st))
-	name := lipgloss.NewStyle().Foreground(m.theme.Text).Render(pad(r.Name(), 24))
+	name := lipgloss.NewStyle().Foreground(m.theme.Text).Render(r.Name())
 	detail := r.Backend()
 	if rl := r.RuntimeLine(); rl != "" {
 		if detail != "" {
@@ -248,7 +252,10 @@ func (m Model) renderOvResource(r tilt.UIResource, sel bool) string {
 	if detail == "" {
 		detail = st.Label()
 	}
-	return marker + glyph + " " + name + " " + m.theme.muted().Render(detail)
+	// Indent so the resource name lines up under the instance-name column (its
+	// glyph sits just to the left); the detail then aligns under the port column.
+	prefix := ovMarker(m.theme, sel) + "   " + glyph + " "
+	return prefix + cell(name, ovNameW) + m.theme.muted().Render(detail)
 }
 
 // ovBadges renders an instance's error/building/pending tallies, or "healthy" /
@@ -273,13 +280,19 @@ func (m Model) ovBadges(port int, c tilt.StatusCounts) string {
 	return strings.Join(segs, " ")
 }
 
-// pad right-pads (or truncates with …) a plain string to w display cells.
-func pad(s string, w int) string {
-	r := []rune(s)
-	if len(r) > w {
-		return string(r[:w-1]) + "…"
+// ovMarker is the 2-cell selection gutter shared by header and resource rows, so
+// the ▶ always sits in the same left column.
+func ovMarker(th Theme, sel bool) string {
+	if sel {
+		return th.accent().Render("▶") + " "
 	}
-	return s + strings.Repeat(" ", w-len(r))
+	return "  "
+}
+
+// cell truncates a styled (possibly ANSI) string to w display cells and right-
+// pads it back to w, so columns line up regardless of content length.
+func cell(s string, w int) string {
+	return pad2(ansi.Truncate(s, w, "…"), w)
 }
 
 // pad2 right-pads an already-styled (possibly ANSI) string to w cells.
