@@ -343,6 +343,11 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, saveLogsCmd(r.Name(), m.resourceLogText(r))
 		}
 		return m, nil
+	case "S":
+		// Instance-level: snapshot the whole active instance (no resource needed).
+		m.statusMsg = "creating snapshot…"
+		m.statusErr = false
+		return m, snapshotCmd(m.currentHost(), m.currentPort(), m.currentLabel())
 	case "T":
 		m.theme = m.theme.next()
 		return m, nil
@@ -588,7 +593,7 @@ func (m Model) renderFooter() string {
 		}
 		inner = lipgloss.NewStyle().Foreground(c).Render(ansi.Truncate(" "+m.statusMsg, m.width, "…"))
 	default:
-		keys := " ↑↓ move · r trigger · R trigger-all · d enable/disable · ⏎ logs · / search · f follow · L level · o open in editor · s save logs · 1 overview · 2-9/[ ] instance · T theme · ? help · q quit"
+		keys := " ↑↓ move · r trigger · R trigger-all · d enable/disable · ⏎ logs · / search · f follow · L level · o open in editor · s save logs · S snapshot · 1 overview · 2-9/[ ] instance · T theme · ? help · q quit"
 		inner = ansi.Truncate(keys, m.width, "…")
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rule, m.theme.footer().Width(m.width).Render(inner))
@@ -612,6 +617,7 @@ func (m Model) helpBox() string {
 		{"c", "clear log filter"},
 		{"o", "open logs in $EDITOR (vim)"},
 		{"s", "save logs to a temp file"},
+		{"S", "snapshot the instance (tilt snapshot)"},
 		{"T", "cycle theme (" + m.theme.Name + ")"},
 		{"g  G", "top / bottom of logs"},
 		{"?  esc", "close this help"},

@@ -63,6 +63,7 @@ Themes: `--theme solarized-light` (default), `solarized-dark`, or `dark`; press 
 | `c`             | clear the log search filter                                      |
 | `o`             | open the selected resource's logs in `$EDITOR` (else vim)        |
 | `s`             | save the selected resource's logs to a temp file                 |
+| `S`             | snapshot the active instance (`tilt snapshot`)                   |
 | `T`             | cycle color theme                                                |
 | `g` / `G`       | jump to top / bottom of logs                                     |
 | `?`             | help                                                             |

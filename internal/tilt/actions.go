@@ -35,6 +35,19 @@ func (k ActionKind) String() string {
 // with the CLI's output attached.
 func RunAction(kind ActionKind, resource string, port int) error {
 	cmd := exec.Command("tilt", kind.String(), resource, "--port", strconv.Itoa(port))
+	return run(cmd)
+}
+
+// CreateSnapshot writes a snapshot of the instance at host:port to path via
+// `tilt snapshot create`, capturing its state for later `tilt snapshot view`.
+func CreateSnapshot(host string, port int, path string) error {
+	cmd := exec.Command("tilt", "snapshot", "create", path, "--host", host, "--port", strconv.Itoa(port))
+	return run(cmd)
+}
+
+// run executes a tilt CLI command, returning any error with the CLI's combined
+// output attached (falling back to the raw error when the CLI prints nothing).
+func run(cmd *exec.Cmd) error {
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(out))
