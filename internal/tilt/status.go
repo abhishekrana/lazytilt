@@ -141,3 +141,34 @@ func (v *View) Counts() (errs, ok, total int) {
 	}
 	return errs, ok, total
 }
+
+// StatusCounts tallies a view's non-disabled resources by State. It backs the
+// cross-instance overview and the top-bar health badges.
+type StatusCounts struct {
+	Error, Building, Pending, OK, Idle, Total int
+}
+
+// StatusCounts returns the per-state tally for this view.
+func (v *View) StatusCounts() StatusCounts {
+	var c StatusCounts
+	for i := range v.UIResources {
+		r := &v.UIResources[i]
+		if r.IsDisabled() {
+			continue
+		}
+		c.Total++
+		switch r.State() {
+		case StatusError:
+			c.Error++
+		case StatusBuilding:
+			c.Building++
+		case StatusPending:
+			c.Pending++
+		case StatusOK:
+			c.OK++
+		default:
+			c.Idle++
+		}
+	}
+	return c
+}

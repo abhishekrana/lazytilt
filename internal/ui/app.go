@@ -49,6 +49,18 @@ type Model struct {
 	view    *tilt.View
 	loadErr error
 
+	// views/viewErrs cache the latest fetch for every discovered instance,
+	// keyed by port, so the top-bar badges and the overview screen can show
+	// cross-instance health without switching. m.view aliases views[currentPort].
+	views    map[int]*tilt.View
+	viewErrs map[int]error
+
+	// overview is the cross-instance dashboard (the ‹0› screen); overviewSel is
+	// the selected row within it and onlyFailing hides all-healthy instances.
+	overview    bool
+	overviewSel int
+	onlyFailing bool
+
 	selected int
 	focus    focusArea
 
@@ -84,6 +96,8 @@ func New(token, host string, port int, themeName string) Model {
 		vp:           vp,
 		focus:        focusSidebar,
 		theme:        th,
+		views:        map[int]*tilt.View{},
+		viewErrs:     map[int]error{},
 	}
 }
 
@@ -126,22 +140,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tickMsg:
 		m.tickN++
-		cmds := []tea.Cmd{tickCmd()}
-		if m.currentPort() != 0 {
-			cmds = append(cmds, fetchCmd(m.currentHost(), m.currentPort(), m.token))
-		}
+		cmds := append([]tea.Cmd{tickCmd()}, m.fetchAllCmds()...)
 		if m.tickN%5 == 0 {
 			cmds = append(cmds, discoverCmd())
 		}
 		return m, tea.Batch(cmds...)
 
 	case viewMsg:
-		if msg.port != m.currentPort() {
-			return m, nil // stale response from a previous instance
-		}
+		// Cache every instance's view by port for the badges/overview; only the
+		// active instance's response updates the focused pane and log viewport.
 		if msg.err != nil {
-			m.loadErr = msg.err
-		} else {
+			m.viewErrs[msg.port] = msg.err
+			if msg.port == m.currentPort() {
+				m.loadErr = msg.err
+			}
+			return m, nil
+		}
+		delete(m.viewErrs, msg.port)
+		m.views[msg.port] = msg.view
+		if msg.port == m.currentPort() {
 			m.loadErr = nil
 			m.view = msg.view
 			m.clampSelection()
@@ -178,6 +195,18 @@ func (m Model) handleInstances(msg instancesMsg) (tea.Model, tea.Cmd) {
 			m.active = i
 		}
 	}
+	// Drop cached views for instances that have gone away, so stale health never
+	// lingers in the badges/overview.
+	valid := make(map[int]bool, len(insts))
+	for _, in := range insts {
+		valid[in.Port] = true
+	}
+	for p := range m.views {
+		if !valid[p] {
+			delete(m.views, p)
+			delete(m.viewErrs, p)
+		}
+	}
 	if m.view == nil || m.currentPort() != prevPort {
 		return m, fetchCmd(m.currentHost(), m.currentPort(), m.token)
 	}
@@ -194,6 +223,9 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.showHelp = false
 		}
 		return m, nil
+	}
+	if m.overview {
+		return m.updateOverviewKeys(msg)
 	}
 	switch msg.String() {
 	case "q", "ctrl+c":
@@ -224,6 +256,10 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.switchInstance(1)
 	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 		return m.gotoInstance(int(msg.String()[0] - '1'))
+	case "0":
+		m.overview = true
+		m.clampOverview()
+		return m, nil
 	case "r":
 		if r, ok := m.selectedResource(); ok {
 			m.mode = modeConfirm
@@ -344,18 +380,42 @@ func (m Model) switchInstance(d int) (tea.Model, tea.Cmd) {
 	return m.gotoInstance((m.active + d + len(m.instances)) % len(m.instances))
 }
 
-// gotoInstance switches to the instance at idx (0-based) and refetches without a
-// restart; a no-op if idx is out of range or already active.
+// gotoInstance switches to the instance at idx (0-based) without a restart; a
+// no-op if idx is out of range or already active. The switch is instant when the
+// target's view is already cached (it usually is — we poll every instance); on a
+// cache miss it shows "connecting…" and fetches.
 func (m Model) gotoInstance(idx int) (tea.Model, tea.Cmd) {
 	if idx < 0 || idx >= len(m.instances) || idx == m.active {
 		return m, nil
 	}
 	m.active = idx
-	m.view = nil
-	m.loadErr = nil
+	port := m.currentPort()
+	m.view = m.views[port]
+	m.loadErr = m.viewErrs[port]
 	m.selected = 0
 	m.statusMsg = ""
-	return m, fetchCmd(m.currentHost(), m.currentPort(), m.token)
+	m.clampSelection()
+	m.setLogs()
+	if m.view == nil {
+		return m, fetchCmd(m.currentHost(), port, m.token)
+	}
+	return m, nil
+}
+
+// fetchAllCmds returns one fetch per discovered instance (so the badges and
+// overview stay current), or a single fallback fetch before discovery has run.
+func (m Model) fetchAllCmds() []tea.Cmd {
+	if len(m.instances) == 0 {
+		if m.fallbackPort != 0 {
+			return []tea.Cmd{fetchCmd(m.fallbackHost, m.fallbackPort, m.token)}
+		}
+		return nil
+	}
+	cmds := make([]tea.Cmd, 0, len(m.instances))
+	for _, in := range m.instances {
+		cmds = append(cmds, fetchCmd(in.Host, in.Port, m.token))
+	}
+	return cmds
 }
 
 func (m Model) runAction(kind tilt.ActionKind) (tea.Model, tea.Cmd) {
@@ -373,10 +433,15 @@ func (m Model) View() string {
 		return "loading…"
 	}
 	bodyH := max(m.height-topBarHeight-footerHeight, 3)
-	body := lipgloss.JoinHorizontal(lipgloss.Top,
-		m.renderSidebar(bodyH),
-		m.renderRightPane(max(m.width-sidebarWidth-1, 10), bodyH),
-	)
+	var body string
+	if m.overview {
+		body = m.renderOverview(bodyH)
+	} else {
+		body = lipgloss.JoinHorizontal(lipgloss.Top,
+			m.renderSidebar(bodyH),
+			m.renderRightPane(max(m.width-sidebarWidth-1, 10), bodyH),
+		)
+	}
 	frame := lipgloss.JoinVertical(lipgloss.Left, m.renderTopBar(), body, m.renderFooter())
 	switch {
 	case m.showHelp:
@@ -406,15 +471,23 @@ func (m Model) confirmBox() string {
 
 func (m Model) renderTopBar() string {
 	title := m.theme.accent().Bold(true).Render(" LAZYTILT ")
-	segs := make([]string, 0, len(m.instances))
+	segs := make([]string, 0, len(m.instances)+1)
 	for i, in := range m.instances {
 		tag := fmt.Sprintf("‹%d›", i+1)
-		if i == m.active {
-			segs = append(segs, m.theme.header().Render(tag+" "+in.Label))
-		} else {
-			segs = append(segs, m.theme.muted().Render(tag+" "+in.Label))
+		nameStyle := m.theme.muted()
+		if i == m.active && !m.overview {
+			nameStyle = m.theme.header()
 		}
+		badge, bc := m.instanceBadge(in.Port)
+		seg := nameStyle.Render(tag+" "+in.Label) + " " + lipgloss.NewStyle().Foreground(bc).Render(badge)
+		segs = append(segs, seg)
 	}
+	// Trailing ‹0› overview tab, highlighted while the overview screen is open.
+	ovStyle := m.theme.muted()
+	if m.overview {
+		ovStyle = m.theme.header()
+	}
+	segs = append(segs, ovStyle.Render("‹0› overview"))
 	bar := " " + title + "   " + strings.Join(segs, "   ")
 	// Title/instances row + a full-width accent rule, so the header reads as a
 	// header without painting a (uneven) background band.
@@ -429,6 +502,9 @@ func (m Model) renderFooter() string {
 
 	var inner string
 	switch {
+	case m.overview:
+		keys := " ↑↓ move · ⏎ open · F only-failing · r trigger · 1-9 instance · 0/esc back · T theme · ? help · q quit"
+		inner = ansi.Truncate(keys, m.width, "…")
 	case m.mode == modeLogFilter:
 		inner = fmt.Sprintf(" search logs: %s▏", m.typing)
 	case m.statusMsg != "":
@@ -438,7 +514,7 @@ func (m Model) renderFooter() string {
 		}
 		inner = lipgloss.NewStyle().Foreground(c).Render(ansi.Truncate(" "+m.statusMsg, m.width, "…"))
 	default:
-		keys := " ↑↓ move · r trigger · e/d enable·disable · ⏎ logs · / search logs · f follow · L level · s disabled · 1-9/[ ] instance · T theme · ? help · q quit"
+		keys := " ↑↓ move · r trigger · e/d enable·disable · ⏎ logs · / search logs · f follow · L level · s disabled · 1-9/[ ] instance · 0 overview · T theme · ? help · q quit"
 		inner = ansi.Truncate(keys, m.width, "…")
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rule, m.theme.footer().Width(m.width).Render(inner))
@@ -451,6 +527,8 @@ func (m Model) helpBox() string {
 		{"⏎ / tab", "focus logs / toggle pane"},
 		{"[  ]", "previous / next instance"},
 		{"1 … 9", "jump to instance N"},
+		{"0", "overview — health of all instances"},
+		{"F", "overview: show only failing"},
 		{"r", "trigger / restart (asks y/n)"},
 		{"e  d", "enable / disable"},
 		{"/", "search logs (highlights matches)"},

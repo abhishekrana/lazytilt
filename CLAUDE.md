@@ -48,12 +48,15 @@ internal/tilt/          one Tilt instance: client + decode + actions (no UI)
   logs.go               span->manifest log assembly
   actions.go            shell out: tilt trigger|enable|disable <res> --port <port>
 internal/discovery/     scan /proc for `tilt up` processes -> []Instance (host/port/label)
-internal/ui/            Bubble Tea: app.go (model/Update/View), sidebar, logpane, theme, messages
+internal/ui/            Bubble Tea: app.go (model/Update/View), sidebar, logpane, overview, theme, messages
+  overview.go           cross-instance ‹0› dashboard + top-bar health badges (errors-first, jump-to-resource)
 ```
 
-Data flow: a 1s tick fetches `GET /api/view` for the active instance; the websocket is intentionally **not** used
-(polling is simpler and was the deliberate choice). Actions shell out to the `tilt` CLI scoped by `--port`. Discovery
-re-runs every ~5 ticks so start/stop is reflected live.
+Data flow: a 1s tick fetches `GET /api/view` for **every** discovered instance, caching each by port in `Model.views`
+(so the top-bar badges and the ‹0› overview show cross-instance health without switching); the active instance's
+response also drives the focused pane and log viewport. The websocket is intentionally **not** used (polling is simpler
+and was the deliberate choice). Actions shell out to the `tilt` CLI scoped by `--port`. Discovery re-runs every ~5 ticks
+so start/stop is reflected live, pruning cached views for instances that disappear.
 
 ## Conventions & gotchas (important)
 
