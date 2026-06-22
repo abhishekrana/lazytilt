@@ -80,3 +80,28 @@ so start/stop is reflected live, pruning cached views for instances that disappe
 Tests render the model and assert on `View()`. For a real visual check, run the binary in a pty with a window size set
 (it shows `loading…` until it gets dimensions), e.g. drive it with Python's `pty` and `TIOCSWINSZ`. Set
 `COLORTERM=truecolor` to see theme colors.
+
+## Releasing
+
+Releases are cut by **pushing a SemVer tag**; everything else is automated.
+
+- **Versioning:** `v`-prefixed SemVer tags (`vMAJOR.MINOR.PATCH`). Still pre-1.0 (`v0.x`), so breaking changes are
+  allowed between minors.
+- **Pipeline:** `.github/workflows/ci.yml` runs vet/test/build on every push + PR. `.github/workflows/release.yml` runs
+  [GoReleaser](https://goreleaser.com) (`.goreleaser.yaml`) on any `v*` tag — it cross-builds linux/darwin (amd64 +
+  arm64) archives, writes `checksums.txt`, and publishes a GitHub Release with auto-generated notes. No Windows builds.
+- **Version stamping:** GoReleaser injects the tag via `-ldflags "-X main.version=…"`; `main.resolveVersion` falls back
+  to the module build info for `go install`-from-tag. Check with `lazytilt --version`.
+
+To cut a release:
+
+```sh
+task check                              # main must be green and pushed
+goreleaser check                        # validate .goreleaser.yaml
+goreleaser release --snapshot --clean --skip=publish   # optional local dry-run (builds all archives into dist/)
+git tag -a v0.2.0 -m "lazytilt v0.2.0"  # annotated tag
+git push origin v0.2.0                  # triggers release.yml
+```
+
+Then watch the run under the repo's **Actions** tab (or `gh run watch`). Never reuse or move a published tag — bump to
+the next patch instead. `dist/` (GoReleaser output) is git-ignored.
