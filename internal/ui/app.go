@@ -68,11 +68,12 @@ type Model struct {
 	follow bool
 	level  logLevel
 
-	mode            inputMode
-	typing          string
-	logFilter       string
-	pendingResource string          // resource awaiting action confirmation
-	pendingAction   tilt.ActionKind // action awaiting confirmation
+	mode              inputMode
+	typing            string
+	logFilter         string
+	pendingResource   string          // resource awaiting action confirmation
+	pendingAction     tilt.ActionKind // action awaiting confirmation
+	pendingRestartAll bool            // a "restart all" is awaiting confirmation
 
 	showHelp bool
 
@@ -118,6 +119,30 @@ func (m Model) currentHost() string {
 		return m.instances[m.active].Host
 	}
 	return m.fallbackHost
+}
+
+func (m Model) currentLabel() string {
+	if m.active >= 0 && m.active < len(m.instances) {
+		return m.instances[m.active].Label
+	}
+	return m.fallbackHost
+}
+
+// restartTargets is the set of resource names a "restart all" would trigger in
+// the active instance: every enabled resource except the (Tiltfile) pseudo-
+// resource. Disabled resources are skipped (triggering one would just error).
+func (m Model) restartTargets() []string {
+	if m.view == nil {
+		return nil
+	}
+	var names []string
+	for _, r := range m.view.Resources() {
+		if r.IsDisabled() || r.Name() == "(Tiltfile)" {
+			continue
+		}
+		names = append(names, r.Name())
+	}
+	return names
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -267,6 +292,12 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.pendingAction = tilt.ActionTrigger
 		}
 		return m, nil
+	case "R":
+		if len(m.restartTargets()) > 0 {
+			m.mode = modeConfirm
+			m.pendingRestartAll = true
+		}
+		return m, nil
 	case "d":
 		// One toggle: enable a disabled resource, disable an enabled one.
 		if r, ok := m.selectedResource(); ok {
@@ -373,6 +404,14 @@ func (m Model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c":
 		return m, tea.Quit
 	case "y", "Y", "enter":
+		if m.pendingRestartAll {
+			targets := m.restartTargets()
+			m.mode = modeNormal
+			m.pendingRestartAll = false
+			m.statusMsg = fmt.Sprintf("restarting %d resources…", len(targets))
+			m.statusErr = false
+			return m, restartAllCmd(targets, m.currentPort())
+		}
 		res, act := m.pendingResource, m.pendingAction
 		m.mode = modeNormal
 		m.pendingResource = ""
@@ -382,6 +421,7 @@ func (m Model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	default:
 		m.mode = modeNormal
 		m.pendingResource = ""
+		m.pendingRestartAll = false
 		return m, nil
 	}
 }
@@ -457,21 +497,35 @@ func (m Model) View() string {
 
 // confirmBox is the action confirmation popup, centered by overlayCenter.
 func (m Model) confirmBox() string {
-	verb := m.pendingAction.String()
-	if verb != "" {
-		verb = strings.ToUpper(verb[:1]) + verb[1:]
+	var title string
+	if m.pendingRestartAll {
+		title = fmt.Sprintf("Restart all %d resources in %s?", len(m.restartTargets()), m.currentLabel())
+	} else {
+		verb := m.pendingAction.String()
+		if verb != "" {
+			verb = strings.ToUpper(verb[:1]) + verb[1:]
+		}
+		title = verb + " " + m.pendingResource + "?"
 	}
 	lines := []string{
-		m.theme.header().Render(verb + " " + m.pendingResource + "?"),
+		m.theme.header().Render(title),
 		"",
 		m.theme.muted().Render("(y) yes        (n) no"),
+	}
+	// Grow the box to fit the title (a "Restart all N resources in <label>?"
+	// prompt is wider than a single-resource one).
+	inner := 0
+	for _, ln := range lines {
+		if w := lipgloss.Width(ln); w > inner {
+			inner = w
+		}
 	}
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(m.theme.Accent).
 		Foreground(m.theme.Text).
 		Padding(2, 6).
-		Width(46).
+		Width(max(inner+12, 46)). // +12 for the horizontal padding (6 each side)
 		Align(lipgloss.Center).
 		Render(strings.Join(lines, "\n"))
 }
@@ -522,7 +576,7 @@ func (m Model) renderFooter() string {
 		}
 		inner = lipgloss.NewStyle().Foreground(c).Render(ansi.Truncate(" "+m.statusMsg, m.width, "…"))
 	default:
-		keys := " ↑↓ move · r trigger · d enable/disable · ⏎ logs · / search · f follow · L level · o open in editor · s save logs · 1 overview · 2-9/[ ] instance · T theme · ? help · q quit"
+		keys := " ↑↓ move · r trigger · R restart-all · d enable/disable · ⏎ logs · / search · f follow · L level · o open in editor · s save logs · 1 overview · 2-9/[ ] instance · T theme · ? help · q quit"
 		inner = ansi.Truncate(keys, m.width, "…")
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rule, m.theme.footer().Width(m.width).Render(inner))
@@ -538,6 +592,7 @@ func (m Model) helpBox() string {
 		{"2 … 9", "jump to instance N"},
 		{"[  ]", "previous / next instance"},
 		{"r", "trigger / restart (asks y/n)"},
+		{"R", "restart all resources (asks y/n)"},
 		{"d", "enable / disable (asks y/n)"},
 		{"/", "search logs (highlights matches)"},
 		{"f", "follow / tail logs"},

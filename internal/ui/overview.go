@@ -217,10 +217,10 @@ func (m Model) overviewSummary() string {
 // offsets so the failing-resource sub-rows line up under their instance, with
 // generous gutters between columns.
 const (
-	ovTagW   = 5  // "‹2›" plus breathing room
-	ovNameW  = 22 // instance label / resource name
-	ovPortW  = 12 // ":10350"
-	ovBadgeW = 14 // ✕N ⟳N …N
+	ovTagW   = 6  // "‹2›" plus breathing room
+	ovNameW  = 26 // instance label / resource name
+	ovPortW  = 16 // ":10350"
+	ovBadgeW = 18 // ✕N ⟳N …N
 )
 
 func (m Model) renderOvHeader(i int, sel bool) string {
@@ -254,7 +254,8 @@ func (m Model) renderOvResource(r tilt.UIResource, sel bool) string {
 	}
 	// Indent so the resource name lines up under the instance-name column (its
 	// glyph sits just to the left); the detail then aligns under the port column.
-	prefix := ovMarker(m.theme, sel) + "   " + glyph + " "
+	// ovTagW-2 keeps the name under the header's name regardless of the tag width.
+	prefix := ovMarker(m.theme, sel) + strings.Repeat(" ", ovTagW-2) + glyph + " "
 	return prefix + cell(name, ovNameW) + m.theme.muted().Render(detail)
 }
 

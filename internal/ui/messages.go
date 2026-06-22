@@ -2,6 +2,10 @@ package ui
 
 import (
 	"context"
+	"fmt"
+	"sort"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/abhishekrana/lazytilt/internal/discovery"
@@ -63,5 +67,45 @@ func actionCmd(kind tilt.ActionKind, resource string, port int) tea.Cmd {
 	return func() tea.Msg {
 		err := tilt.RunAction(kind, resource, port)
 		return actionResultMsg{kind: kind, resource: resource, err: err}
+	}
+}
+
+// restartAllConcurrency bounds the number of in-flight `tilt trigger`
+// subprocesses, so a large instance doesn't spawn dozens at once.
+const restartAllConcurrency = 8
+
+// restartAllCmd triggers every named resource on an instance (Tilt has no bulk
+// trigger, so we fan out one CLI call per resource, capped) and reports a
+// summary of how many succeeded.
+func restartAllCmd(names []string, port int) tea.Cmd {
+	return func() tea.Msg {
+		var (
+			wg     sync.WaitGroup
+			mu     sync.Mutex
+			failed []string
+			sem    = make(chan struct{}, restartAllConcurrency)
+		)
+		for _, n := range names {
+			wg.Add(1)
+			go func(n string) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				if err := tilt.RunAction(tilt.ActionTrigger, n, port); err != nil {
+					mu.Lock()
+					failed = append(failed, n)
+					mu.Unlock()
+				}
+			}(n)
+		}
+		wg.Wait()
+		if len(failed) > 0 {
+			sort.Strings(failed)
+			return notifyMsg{
+				text: fmt.Sprintf("restart: %d of %d failed (%s)", len(failed), len(names), strings.Join(failed, ", ")),
+				err:  true,
+			}
+		}
+		return notifyMsg{text: fmt.Sprintf("restarted %d resources ✓", len(names))}
 	}
 }
