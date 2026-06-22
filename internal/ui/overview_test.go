@@ -38,8 +38,8 @@ func TestTopBarHealthBadges(t *testing.T) {
 	if !strings.Contains(frame, "✕1") {
 		t.Errorf("top bar should badge the k8s instance with ✕1:\n%s", frame)
 	}
-	if !strings.Contains(frame, "‹0› overview") {
-		t.Error("top bar should offer the ‹0› overview tab")
+	if !strings.Contains(frame, "‹1› overview") {
+		t.Error("top bar should lead with the ‹1› overview tab")
 	}
 }
 
@@ -120,9 +120,9 @@ func TestOverviewIsLandingScreenAndToggles(t *testing.T) {
 	if m.overview {
 		t.Error("esc should leave the overview")
 	}
-	m = step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("0")})
+	m = step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1")})
 	if !m.overview {
-		t.Error("0 should reopen the overview")
+		t.Error("1 should reopen the overview")
 	}
 }
 

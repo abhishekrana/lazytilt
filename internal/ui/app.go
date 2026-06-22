@@ -55,7 +55,7 @@ type Model struct {
 	views    map[int]*tilt.View
 	viewErrs map[int]error
 
-	// overview is the cross-instance dashboard (the ‹0› screen); overviewSel is
+	// overview is the cross-instance dashboard (the ‹1› screen); overviewSel is
 	// the selected row within it and onlyFailing hides all-healthy instances.
 	overview    bool
 	overviewSel int
@@ -255,12 +255,12 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.switchInstance(-1)
 	case "]":
 		return m.switchInstance(1)
-	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
-		return m.gotoInstance(int(msg.String()[0] - '1'))
-	case "0":
+	case "1":
 		m.overview = true
 		m.clampOverview()
 		return m, nil
+	case "2", "3", "4", "5", "6", "7", "8", "9":
+		return m.gotoInstance(int(msg.String()[0] - '2'))
 	case "r":
 		if r, ok := m.selectedResource(); ok {
 			m.mode = modeConfirm
@@ -473,8 +473,15 @@ func (m Model) confirmBox() string {
 func (m Model) renderTopBar() string {
 	title := m.theme.accent().Bold(true).Render(" LAZYTILT ")
 	segs := make([]string, 0, len(m.instances)+1)
+	// ‹1› overview leads the bar, highlighted while the overview screen is open;
+	// the instances follow as ‹2›, ‹3›, …
+	ovStyle := m.theme.muted()
+	if m.overview {
+		ovStyle = m.theme.header()
+	}
+	segs = append(segs, ovStyle.Render("‹1› overview"))
 	for i, in := range m.instances {
-		tag := fmt.Sprintf("‹%d›", i+1)
+		tag := fmt.Sprintf("‹%d›", i+2)
 		nameStyle := m.theme.muted()
 		if i == m.active && !m.overview {
 			nameStyle = m.theme.header()
@@ -483,12 +490,6 @@ func (m Model) renderTopBar() string {
 		seg := nameStyle.Render(tag+" "+in.Label) + " " + lipgloss.NewStyle().Foreground(bc).Render(badge)
 		segs = append(segs, seg)
 	}
-	// Trailing ‹0› overview tab, highlighted while the overview screen is open.
-	ovStyle := m.theme.muted()
-	if m.overview {
-		ovStyle = m.theme.header()
-	}
-	segs = append(segs, ovStyle.Render("‹0› overview"))
 	bar := " " + title + "   " + strings.Join(segs, "   ")
 	// Title/instances row + a full-width accent rule, so the header reads as a
 	// header without painting a (uneven) background band.
@@ -504,7 +505,7 @@ func (m Model) renderFooter() string {
 	var inner string
 	switch {
 	case m.overview:
-		keys := " ↑↓ move · ⏎ open · F only-failing · r trigger · 1-9 instance · 0/esc back · T theme · ? help · q quit"
+		keys := " ↑↓ move · ⏎ open · F only-failing · r trigger · 2-9 instance · 1/esc back · T theme · ? help · q quit"
 		inner = ansi.Truncate(keys, m.width, "…")
 	case m.mode == modeLogFilter:
 		inner = fmt.Sprintf(" search logs: %s▏", m.typing)
@@ -515,7 +516,7 @@ func (m Model) renderFooter() string {
 		}
 		inner = lipgloss.NewStyle().Foreground(c).Render(ansi.Truncate(" "+m.statusMsg, m.width, "…"))
 	default:
-		keys := " ↑↓ move · r trigger · e/d enable·disable · ⏎ logs · / search logs · f follow · L level · s disabled · 1-9/[ ] instance · 0 overview · T theme · ? help · q quit"
+		keys := " ↑↓ move · r trigger · e/d enable·disable · ⏎ logs · / search logs · f follow · L level · s disabled · 1 overview · 2-9/[ ] instance · T theme · ? help · q quit"
 		inner = ansi.Truncate(keys, m.width, "…")
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rule, m.theme.footer().Width(m.width).Render(inner))
@@ -526,10 +527,10 @@ func (m Model) helpBox() string {
 	rows := [][2]string{
 		{"↑/k ↓/j", "move selection"},
 		{"⏎ / tab", "focus logs / toggle pane"},
-		{"[  ]", "previous / next instance"},
-		{"1 … 9", "jump to instance N"},
-		{"0", "overview — health of all instances"},
+		{"1", "overview — health of all instances"},
 		{"F", "overview: show only failing"},
+		{"2 … 9", "jump to instance N"},
+		{"[  ]", "previous / next instance"},
 		{"r", "trigger / restart (asks y/n)"},
 		{"e  d", "enable / disable"},
 		{"/", "search logs (highlights matches)"},

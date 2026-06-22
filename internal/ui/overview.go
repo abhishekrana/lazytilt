@@ -66,7 +66,7 @@ func (m Model) updateOverviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
-	case "0", "esc":
+	case "1", "esc":
 		m.overview = false
 		return m, nil
 	case "?":
@@ -93,9 +93,9 @@ func (m Model) updateOverviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.openOverviewRow(rows[m.overviewSel])
 		}
 		return m, nil
-	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+	case "2", "3", "4", "5", "6", "7", "8", "9":
 		m.overview = false
-		return m.gotoInstance(int(msg.String()[0] - '1'))
+		return m.gotoInstance(int(msg.String()[0] - '2'))
 	}
 	return m, nil
 }

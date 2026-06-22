@@ -120,16 +120,16 @@ func TestSwitchInstanceResetsView(t *testing.T) {
 func TestNumberKeySwitchesInstance(t *testing.T) {
 	m := New("", "localhost", 10350, "")
 	m = step(m, tea.WindowSizeMsg{Width: 110, Height: 26})
-	m = step(m, twoInstances()) // ‹1› app-one :10350 (active), ‹2› app-two :10360
+	m = step(m, twoInstances()) // ‹1› overview, ‹2› app-one :10350 (active), ‹3› app-two :10360
 	m = step(m, viewMsg{port: 10350, view: mustView(t, "view_k8s.json")})
 	if m.currentPort() != 10350 {
 		t.Fatalf("start port = %d, want 10350", m.currentPort())
 	}
 
-	// Pressing "2" jumps directly to the second instance.
-	m = step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
+	// Instances start at ‹2›, so "3" jumps directly to the second instance.
+	m = step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
 	if m.currentPort() != 10360 {
-		t.Errorf("after '2' port = %d, want 10360", m.currentPort())
+		t.Errorf("after '3' port = %d, want 10360", m.currentPort())
 	}
 	if m.view != nil {
 		t.Error("view should reset on switch (no restart, fresh fetch)")
