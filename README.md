@@ -45,6 +45,10 @@ The sidebar's first entry, **All Resources**, streams every resource's logs inte
 line tagged with its source — handy for watching everything at once. It's the default selection when you open an
 instance; pick a single resource to narrow the logs to it.
 
+When resources carry Tiltfile **labels**, the sidebar groups them under label headers (each with a per-group status
+rollup), sorted by label name with resources alphabetical inside each group. The headers are dividers only — selection
+still moves resource-to-resource. With no labels it's a flat list in Tilt's order.
+
 Themes: `--theme solarized-light` (default), `solarized-dark`, or `dark`; press `T` in-app to cycle.
 
 ## Keys

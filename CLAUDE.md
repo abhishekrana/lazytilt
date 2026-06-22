@@ -76,7 +76,12 @@ so start/stop is reflected live, pruning cached views for instances that disappe
   global Tilt output); resources live at selection index `i+1`. `selectedResource()` returns `ok=false` on the All row,
   so resource-scoped actions (trigger/disable/save) are no-ops there; `onAllLogs()` reports the row. Anything mapping a
   resource to a selection index (e.g. `selectByName`) must add the +1 offset.
-- **Keep it simple.** Flat resource list (no grouping), minimal panels. Prefer the smallest change.
+- **Sidebar grouping is label-driven.** When any resource has a label, `sidebarGroups()` arranges resources into label
+  groups (sorted by label, resources alphabetical within; `(no label)` last); with no labels it's a flat group in Tilt
+  order. `visible()` flattens the groups, so `selected` still indexes only the All row + resources — the rendered group
+  headers are **not** selectable (selection skips them). Keep `visible()` and `renderSidebar` deriving from the same
+  `sidebarGroups()` so order and headers never drift.
+- **Keep it simple.** Minimal panels, no collapsible/expandable chrome; prefer the smallest change.
 - **Commits:** do not add `Co-Authored-By` lines.
 
 ## Verifying UI changes

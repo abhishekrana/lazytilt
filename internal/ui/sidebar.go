@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/abhishekrana/lazytilt/internal/tilt"
@@ -10,21 +12,88 @@ import (
 
 const sidebarWidth = 28
 
+// noLabelHeader is the group header for resources that carry no label.
+const noLabelHeader = "(no label)"
+
 // The sidebar's selectable rows are a synthetic "All Resources" entry (index 0,
 // whose logs are the combined stream of every resource) followed by the
-// resources (index i maps to visible()[i-1]).
+// resources (index i maps to visible()[i-1]). When any resource has a label the
+// resources are shown in label groups with non-selectable header rows between
+// them; selection still moves resource-to-resource, skipping the headers.
 
-// visible returns the resources shown in the sidebar, sorted by Tilt's order.
-// Disabled resources are always shown (so you can select one and re-enable it).
-func (m Model) visible() []tilt.UIResource {
+// sidebarGroup is a label group rendered in the sidebar: a header (empty for the
+// unlabeled flat fallback) and its resources in display order.
+type sidebarGroup struct {
+	header    string
+	resources []tilt.UIResource
+}
+
+// sidebarGroups arranges the resources for display. If any resource has a label,
+// resources are grouped by their first label — groups sorted by label name with
+// "(no label)" last, resources alphabetical within each group. With no labels
+// anywhere it falls back to a single headerless group in Tilt's order.
+func (m Model) sidebarGroups() []sidebarGroup {
 	if m.view == nil {
 		return nil
 	}
-	return m.view.Resources()
+	all := m.view.Resources()
+
+	labeled := false
+	for i := range all {
+		if len(all[i].LabelNames()) > 0 {
+			labeled = true
+			break
+		}
+	}
+	if !labeled {
+		return []sidebarGroup{{resources: all}} // flat fallback, Tilt order, no header
+	}
+
+	byLabel := map[string][]tilt.UIResource{}
+	for _, r := range all {
+		key := noLabelHeader
+		if names := r.LabelNames(); len(names) > 0 {
+			key = names[0] // first label (LabelNames is sorted)
+		}
+		byLabel[key] = append(byLabel[key], r)
+	}
+
+	headers := make([]string, 0, len(byLabel))
+	for k := range byLabel {
+		headers = append(headers, k)
+	}
+	sort.Slice(headers, func(i, j int) bool {
+		if headers[i] == noLabelHeader {
+			return false
+		}
+		if headers[j] == noLabelHeader {
+			return true
+		}
+		return headers[i] < headers[j]
+	})
+
+	groups := make([]sidebarGroup, 0, len(headers))
+	for _, h := range headers {
+		rs := byLabel[h]
+		sort.SliceStable(rs, func(i, j int) bool { return rs[i].Name() < rs[j].Name() })
+		groups = append(groups, sidebarGroup{header: h, resources: rs})
+	}
+	return groups
+}
+
+// visible returns the resources in sidebar display order (grouped + alphabetical
+// when labeled, else Tilt order). Disabled resources are always included.
+func (m Model) visible() []tilt.UIResource {
+	var out []tilt.UIResource
+	for _, g := range m.sidebarGroups() {
+		out = append(out, g.resources...)
+	}
+	return out
 }
 
 // rowCount is the number of selectable sidebar rows: the All-Resources row plus
-// one per resource (0 before any view has loaded).
+// one per resource (0 before any view has loaded). Group headers are not counted
+// — they are not selectable.
 func (m Model) rowCount() int {
 	if m.view == nil {
 		return 0
@@ -65,16 +134,22 @@ func (m *Model) moveSelection(d int) {
 }
 
 func (m Model) renderSidebar(h int) string {
-	vis := m.visible()
 	lines := make([]string, 0, h)
-
 	if m.view != nil {
 		lines = append(lines, m.allRow())
 	}
-	for i, r := range vis {
-		lines = append(lines, m.resourceRow(i, r))
+
+	idx := 0 // running index into visible(); selection index is idx+1
+	for _, g := range m.sidebarGroups() {
+		if g.header != "" {
+			lines = append(lines, "", m.groupHeader(g))
+		}
+		for _, r := range g.resources {
+			lines = append(lines, m.resourceRow(idx, r))
+			idx++
+		}
 	}
-	if m.view != nil && len(vis) == 0 {
+	if m.view != nil && idx == 0 {
 		lines = append(lines, m.theme.muted().Render(" no resources"))
 	}
 
@@ -95,6 +170,55 @@ func (m Model) allRow() string {
 	}
 	row := ind + m.theme.muted().Render("≡") + " " + lipgloss.NewStyle().Foreground(m.theme.Text).Render(label)
 	return ansi.Truncate(row, sidebarWidth, "…")
+}
+
+// groupHeader renders a non-selectable label divider with a rolled-up status.
+func (m Model) groupHeader(g sidebarGroup) string {
+	row := m.theme.accent().Bold(true).Render(g.header)
+	if roll := m.groupRollup(g.resources); roll != "" {
+		row += " " + roll
+	}
+	return ansi.Truncate(row, sidebarWidth, "…")
+}
+
+// groupRollup summarizes a group's resources as colored badges: errors, then
+// in-flight work, disabled, and finally the healthy count.
+func (m Model) groupRollup(rs []tilt.UIResource) string {
+	var errs, building, pending, ok, disabled int
+	for i := range rs {
+		switch rs[i].State() {
+		case tilt.StatusError:
+			errs++
+		case tilt.StatusBuilding:
+			building++
+		case tilt.StatusPending:
+			pending++
+		case tilt.StatusOK:
+			ok++
+		case tilt.StatusDisabled:
+			disabled++
+		}
+	}
+	badge := func(c lipgloss.Color, glyph string, n int) string {
+		return lipgloss.NewStyle().Foreground(c).Render(fmt.Sprintf("%s%d", glyph, n))
+	}
+	var segs []string
+	if errs > 0 {
+		segs = append(segs, badge(m.theme.Err, "✕", errs))
+	}
+	if building > 0 {
+		segs = append(segs, badge(m.theme.Building, "⟳", building))
+	}
+	if pending > 0 {
+		segs = append(segs, badge(m.theme.Pending, "…", pending))
+	}
+	if disabled > 0 {
+		segs = append(segs, badge(m.theme.Disabled, "⊘", disabled))
+	}
+	if ok > 0 {
+		segs = append(segs, badge(m.theme.OK, "✓", ok))
+	}
+	return strings.Join(segs, " ")
 }
 
 // resourceRow renders the resource at visible()[i], i.e. selection index i+1.
