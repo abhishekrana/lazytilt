@@ -67,7 +67,8 @@ func TestCarriageReturnLogsDoNotCorrupt(t *testing.T) {
 	m = step(m, tea.WindowSizeMsg{Width: 90, Height: 24})
 	m = step(m, instancesMsg{instances: []discovery.Instance{{Host: "localhost", Port: 10350, Label: "app"}}})
 	m = step(m, viewMsg{port: 10350, view: v})
-	m = step(m, tea.KeyMsg{Type: tea.KeyEsc}) // leave the overview to see the log pane
+	m = step(m, tea.KeyMsg{Type: tea.KeyEsc})  // leave the overview to see the log pane
+	m = step(m, tea.KeyMsg{Type: tea.KeyDown}) // select the resource (index 0 is All Resources)
 
 	frame := m.View()
 	if strings.ContainsRune(frame, '\r') {
@@ -78,5 +79,60 @@ func TestCarriageReturnLogsDoNotCorrupt(t *testing.T) {
 	}
 	if strings.Contains(frame, "progress 1") {
 		t.Error("overwritten progress text should not appear")
+	}
+}
+
+// TestAllResourcesCombinedView checks the synthetic "All Resources" row (the
+// default selection): logs from every resource plus global Tilt output, in
+// order, each line tagged with its source.
+func TestAllResourcesCombinedView(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(termenv.Ascii)
+
+	v := &tilt.View{
+		UIResources: []tilt.UIResource{
+			{Metadata: tilt.ObjectMeta{Name: "api"}, Status: tilt.UIResourceStatus{UpdateStatus: "ok", Order: 1}},
+			{Metadata: tilt.ObjectMeta{Name: "worker"}, Status: tilt.UIResourceStatus{UpdateStatus: "error", Order: 2}},
+		},
+		LogList: tilt.LogList{
+			Spans: map[string]tilt.LogSpan{
+				"g": {ManifestName: ""}, // global / Tiltfile output
+				"a": {ManifestName: "api"},
+				"w": {ManifestName: "worker"},
+			},
+			Segments: []tilt.LogSegment{
+				{SpanID: "g", Text: "tilt starting\n", Level: "INFO"},
+				{SpanID: "a", Text: "loading\rapi up\n", Level: "INFO"}, // carriage-return overwrite
+				{SpanID: "w", Text: "worker boom\n", Level: "ERROR"},
+			},
+		},
+	}
+	m := New("", "localhost", 10350, "")
+	m = step(m, tea.WindowSizeMsg{Width: 120, Height: 30})
+	m = step(m, instancesMsg{instances: []discovery.Instance{{Host: "localhost", Port: 10350, Label: "app"}}})
+	m = step(m, viewMsg{port: 10350, view: v})
+	m = step(m, tea.KeyMsg{Type: tea.KeyEsc}) // lands on the All Resources row (index 0)
+
+	if !m.onAllLogs() {
+		t.Fatal("default selection should be the All Resources row")
+	}
+	frame := ansi.Strip(m.View())
+
+	if !strings.Contains(frame, "All Resources") || !strings.Contains(frame, "2 resources") {
+		t.Errorf("combined header missing:\n%s", frame)
+	}
+	for _, want := range []string{"tilt starting", "api up", "worker boom"} {
+		if !strings.Contains(frame, want) {
+			t.Errorf("combined view missing %q", want)
+		}
+	}
+	// Carriage-return overwrite resolved even in the combined stream.
+	if strings.Contains(frame, "loading") {
+		t.Error("overwritten text should not appear in the combined stream")
+	}
+	// Interleaved in segment order: global, then api, then worker.
+	gi, ai, wi := strings.Index(frame, "tilt starting"), strings.Index(frame, "api up"), strings.Index(frame, "worker boom")
+	if !(gi < ai && ai < wi) {
+		t.Errorf("combined order wrong: tilt=%d api=%d worker=%d", gi, ai, wi)
 	}
 }

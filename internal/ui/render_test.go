@@ -63,7 +63,9 @@ func TestRenderFrame(t *testing.T) {
 	m = step(m, twoInstances())
 	m = step(m, viewMsg{port: 10350, view: mustView(t, "view_k8s.json")})
 	m = step(m, tea.KeyMsg{Type: tea.KeyEsc}) // leave the overview landing screen
-	// Select the failing k8s resource (index 2: (Tiltfile), api, worker).
+	// Index 0 is the "All Resources" row, so resources start at 1: 1=(Tiltfile),
+	// 2=api, 3=worker. Three downs selects the failing worker.
+	m = step(m, tea.KeyMsg{Type: tea.KeyDown})
 	m = step(m, tea.KeyMsg{Type: tea.KeyDown})
 	m = step(m, tea.KeyMsg{Type: tea.KeyDown})
 
@@ -86,7 +88,8 @@ func TestRenderCompose(t *testing.T) {
 	m = step(m, instancesMsg{instances: []discovery.Instance{{Host: "localhost", Port: 10360, Label: "app-two"}}})
 	m = step(m, viewMsg{port: 10360, view: mustView(t, "view_compose.json")})
 	m = step(m, tea.KeyMsg{Type: tea.KeyEsc}) // leave the overview landing screen
-	// Select web (index 1).
+	// Select web. Index 0 is the "All Resources" row, so web (2nd resource) is at 2.
+	m = step(m, tea.KeyMsg{Type: tea.KeyDown})
 	m = step(m, tea.KeyMsg{Type: tea.KeyDown})
 
 	frame := m.View()
@@ -171,8 +174,10 @@ func TestTriggerConfirmation(t *testing.T) {
 	m = step(m, tea.WindowSizeMsg{Width: 100, Height: 24})
 	m = step(m, twoInstances())
 	m = step(m, viewMsg{port: 10350, view: mustView(t, "view_k8s.json")})
-	m = step(m, tea.KeyMsg{Type: tea.KeyEsc})  // leave the overview landing screen
-	m = step(m, tea.KeyMsg{Type: tea.KeyDown}) // select "api" (index 1)
+	m = step(m, tea.KeyMsg{Type: tea.KeyEsc}) // leave the overview landing screen
+	// 0 = All Resources, 1 = (Tiltfile), 2 = api.
+	m = step(m, tea.KeyMsg{Type: tea.KeyDown})
+	m = step(m, tea.KeyMsg{Type: tea.KeyDown})
 
 	// r opens a confirmation and does NOT act yet.
 	m = step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})

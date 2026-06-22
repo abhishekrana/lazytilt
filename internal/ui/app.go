@@ -603,6 +603,7 @@ func (m Model) renderFooter() string {
 func (m Model) helpBox() string {
 	rows := [][2]string{
 		{"↑/k ↓/j", "move selection"},
+		{"≡ (top row)", "All Resources — combined log stream"},
 		{"⏎ / tab", "focus logs / toggle pane"},
 		{"1", "overview — health of all instances"},
 		{"F", "overview: show only failing"},

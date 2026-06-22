@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/abhishekrana/lazytilt/internal/tilt"
@@ -39,8 +40,9 @@ func (l logLevel) label() string {
 	}
 }
 
-// setLogs rebuilds the log viewport content for the selected resource, applying
-// the level and text filters and wrapping to the pane width.
+// setLogs rebuilds the log viewport content for the current selection — either a
+// single resource or the combined "All Resources" stream — applying the level and
+// text filters and wrapping to the pane width.
 func (m *Model) setLogs() {
 	if m.vp.Width <= 0 {
 		return
@@ -48,7 +50,8 @@ func (m *Model) setLogs() {
 	r, ok := m.selectedResource()
 
 	// Size the viewport around the always-on detail strip: header + controls +
-	// separator take 3 rows, plus one row per detail line for the selection.
+	// separator take 3 rows, plus one row per detail line for the selection. The
+	// combined "All Resources" view has no detail strip.
 	bodyH := max(m.height-topBarHeight-footerHeight, 3)
 	strip := 0
 	if ok {
@@ -56,24 +59,23 @@ func (m *Model) setLogs() {
 	}
 	m.vp.Height = max(bodyH-3-strip, 1)
 
-	if !ok || m.view == nil {
+	if m.view == nil || (!ok && !m.onAllLogs()) {
 		m.vp.SetContent("")
 		return
 	}
 
-	var b strings.Builder
-	for _, s := range m.view.LogList.SegmentsFor(r.Name()) {
-		if m.level.allows(s.Level) {
-			b.WriteString(s.Text)
-		}
+	// Source lines: the combined stream (All Resources) or the selected resource.
+	var lines []string
+	if m.onAllLogs() {
+		lines = m.combinedLogLines()
+	} else {
+		lines = m.resourceLogLines(r)
 	}
-	text := strings.TrimRight(b.String(), "\n")
 
 	flt := strings.ToLower(m.logFilter)
 	hl := lipgloss.NewStyle().Background(m.theme.Pending).Foreground(lipgloss.Color("#000000")).Bold(true)
-	out := make([]string, 0, 64)
-	for ln := range strings.SplitSeq(text, "\n") {
-		ln = sanitizeLogLine(ln)
+	out := make([]string, 0, len(lines))
+	for _, ln := range lines {
 		if flt != "" {
 			// When filtering, show the plain text with every match highlighted.
 			plain := ansi.Strip(ln)
@@ -88,6 +90,83 @@ func (m *Model) setLogs() {
 	if m.follow {
 		m.vp.GotoBottom()
 	}
+}
+
+// resourceLogLines returns the selected resource's logs as sanitized lines,
+// honoring the level filter.
+func (m Model) resourceLogLines(r tilt.UIResource) []string {
+	var b strings.Builder
+	for _, s := range m.view.LogList.SegmentsFor(r.Name()) {
+		if m.level.allows(s.Level) {
+			b.WriteString(s.Text)
+		}
+	}
+	text := strings.TrimRight(b.String(), "\n")
+	if text == "" {
+		return nil
+	}
+	out := make([]string, 0, 64)
+	for ln := range strings.SplitSeq(text, "\n") {
+		out = append(out, sanitizeLogLine(ln))
+	}
+	return out
+}
+
+// maxSourceWidth caps the resource-name column in the combined view.
+const maxSourceWidth = 18
+
+// combinedLogLines returns the interleaved logs of every resource as sanitized
+// lines, each prefixed with its source ("tilt" = global Tilt output) in the
+// source's status color, honoring the level filter. The source column is
+// width-aligned so the log text starts at a consistent column.
+func (m Model) combinedLogLines() []string {
+	all := m.view.LogList.AllLines()
+
+	// Status color per resource, for the source prefix.
+	color := map[string]lipgloss.Color{}
+	for _, r := range m.view.Resources() {
+		color[r.Name()] = m.theme.StatusColor(r.State())
+	}
+
+	w := 0
+	for _, ll := range all {
+		if !m.level.allows(ll.Level) {
+			continue
+		}
+		if n := lipgloss.Width(sourceName(ll.Manifest)); n > w {
+			w = n
+		}
+	}
+	if w > maxSourceWidth {
+		w = maxSourceWidth
+	}
+
+	out := make([]string, 0, len(all))
+	for _, ll := range all {
+		if !m.level.allows(ll.Level) {
+			continue
+		}
+		name := ansi.Truncate(sourceName(ll.Manifest), w, "…")
+		if pad := w - lipgloss.Width(name); pad > 0 {
+			name += strings.Repeat(" ", pad)
+		}
+		style := m.theme.muted()
+		if c, ok := color[ll.Manifest]; ok {
+			style = lipgloss.NewStyle().Foreground(c)
+		}
+		prefix := style.Render(name) + m.theme.muted().Render(" │ ")
+		out = append(out, prefix+sanitizeLogLine(ll.Text))
+	}
+	return out
+}
+
+// sourceName labels a log line's manifest in the combined view; global
+// (empty-manifest) Tilt output is labeled "tilt".
+func sourceName(manifest string) string {
+	if manifest == "" {
+		return "tilt"
+	}
+	return manifest
 }
 
 // resourceLogText assembles the full, plain-text logs for a resource: every
@@ -164,6 +243,17 @@ func sanitizeLogLine(s string) string {
 	return b.String()
 }
 
+// allLogsHeader is the log-pane header for the combined "All Resources" view.
+func (m Model) allLogsHeader(w int) string {
+	n := m.view.StatusCounts().Total
+	if m.focus == focusLogs {
+		// Focus indicator: same reverse-video highlight a resource header uses.
+		plain := fmt.Sprintf("All Resources · %d resources", n)
+		return lipgloss.NewStyle().Reverse(true).Bold(true).Width(w).Render(ansi.Truncate(" "+plain, w, "…"))
+	}
+	return m.theme.header().Render("All Resources") + m.theme.muted().Render(fmt.Sprintf(" · %d resources", n))
+}
+
 func (m Model) renderRightPane(w, h int) string {
 	box := m.theme.pane().Width(w).Height(h)
 
@@ -177,7 +267,10 @@ func (m Model) renderRightPane(w, h int) string {
 
 	r, ok := m.selectedResource()
 	header := m.theme.muted().Render("no resource selected")
-	if ok {
+	switch {
+	case m.onAllLogs():
+		header = m.allLogsHeader(w)
+	case ok:
 		st := r.State()
 		statusSeg := st.Label()
 		if g := statusGlyph(st); g != "" {

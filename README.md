@@ -41,6 +41,10 @@ go build -o lazytilt . && ./lazytilt
 lazytilt auto-discovers running `tilt up` processes (Linux via `/proc`, macOS via `ps`/`lsof`) and reads each one's
 `--port` / `TILT_PORT`. If none are found it falls back to `--host`/`--port` (defaults `localhost:10350`).
 
+The sidebar's first entry, **All Resources**, streams every resource's logs interleaved with global Tilt output, each
+line tagged with its source — handy for watching everything at once. It's the default selection when you open an
+instance; pick a single resource to narrow the logs to it.
+
 Themes: `--theme solarized-light` (default), `solarized-dark`, or `dark`; press `T` in-app to cycle.
 
 ## Keys

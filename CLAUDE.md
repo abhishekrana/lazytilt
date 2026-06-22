@@ -45,7 +45,7 @@ internal/tilt/          one Tilt instance: client + decode + actions (no UI)
   types.go              hand-rolled View/UIResource/LogList structs (camelCase JSON)
   client.go             GET /api/view (+ X-Tilt-Token), ParseView
   status.go             updateStatus/runtimeStatus -> combined Status; backend + runtime line
-  logs.go               span->manifest log assembly
+  logs.go               span->manifest log assembly; AllLines = interleaved, source-tagged (All-Resources view)
   actions.go            shell out: tilt trigger|enable|disable <res> --port <port>; tilt snapshot create
 internal/discovery/     find `tilt up` processes -> []Instance; Linux /proc, macOS ps/lsof (discovery_<goos>.go)
 internal/ui/            Bubble Tea: app.go (model/Update/View), sidebar, logpane, overview, theme, messages
@@ -72,6 +72,10 @@ so start/stop is reflected live, pruning cached views for instances that disappe
 - **Tab numbering is `‹1›` = overview, `‹2›…‹9›` = instances.** This invariant spans three places that must agree: the
   top bar (`renderTopBar`), the overview header tags (`renderOvHeader`, `i+2`), and the digit-key handlers (`'2'` ⇒
   instance index 0). The overview itself is reached/left with `1`; out-of-range digits are no-ops.
+- **Sidebar index 0 is the synthetic "All Resources" row.** Its logs are the combined stream of every resource (plus
+  global Tilt output); resources live at selection index `i+1`. `selectedResource()` returns `ok=false` on the All row,
+  so resource-scoped actions (trigger/disable/save) are no-ops there; `onAllLogs()` reports the row. Anything mapping a
+  resource to a selection index (e.g. `selectByName`) must add the +1 offset.
 - **Keep it simple.** Flat resource list (no grouping), minimal panels. Prefer the smallest change.
 - **Commits:** do not add `Co-Authored-By` lines.
 

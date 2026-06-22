@@ -125,10 +125,12 @@ func (m Model) openOverviewRow(r ovRow) (tea.Model, tea.Cmd) {
 }
 
 // selectByName points the sidebar selection at the named resource, if visible.
+// Selection index 0 is the "All Resources" row, so a resource at visible()[i]
+// lives at index i+1.
 func (m *Model) selectByName(name string) {
 	for i, r := range m.visible() {
 		if r.Name() == name {
-			m.selected = i
+			m.selected = i + 1
 			return
 		}
 	}

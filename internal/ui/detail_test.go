@@ -18,7 +18,8 @@ func detailView(t *testing.T, v *tilt.View) Model {
 	m = step(m, tea.WindowSizeMsg{Width: 110, Height: 26})
 	m = step(m, instancesMsg{instances: []discovery.Instance{{Host: "localhost", Port: 10350, Label: "app"}}})
 	m = step(m, viewMsg{port: 10350, view: v})
-	m = step(m, tea.KeyMsg{Type: tea.KeyEsc}) // leave the overview landing screen
+	m = step(m, tea.KeyMsg{Type: tea.KeyEsc})  // leave the overview landing screen
+	m = step(m, tea.KeyMsg{Type: tea.KeyDown}) // index 0 is "All Resources"; select the first resource
 	return m
 }
 

@@ -126,3 +126,30 @@ func TestLogAssembly(t *testing.T) {
 		t.Errorf("empty span manifest = %q, want empty", got)
 	}
 }
+
+func TestAllLines(t *testing.T) {
+	v := loadView(t, "view_k8s.json")
+	lines := v.LogList.AllLines()
+	if len(lines) == 0 {
+		t.Fatal("expected combined log lines")
+	}
+
+	var sawAPI, sawWorker bool
+	for _, ln := range lines {
+		if ln.Manifest == "api" && ln.Text == "listening on :8080" {
+			sawAPI = true
+		}
+		if ln.Manifest == "worker" {
+			sawWorker = true
+			if ln.Level != "ERROR" {
+				t.Errorf("worker line level = %q, want ERROR", ln.Level)
+			}
+		}
+	}
+	if !sawAPI {
+		t.Error("combined lines missing api's 'listening on :8080' tagged to api")
+	}
+	if !sawWorker {
+		t.Error("combined lines missing worker output")
+	}
+}
