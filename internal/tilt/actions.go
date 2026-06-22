@@ -1,7 +1,10 @@
 package tilt
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -40,9 +43,29 @@ func RunAction(kind ActionKind, resource string, port int) error {
 
 // CreateSnapshot writes a snapshot of the instance at host:port to path via
 // `tilt snapshot create`, capturing its state for later `tilt snapshot view`.
+// The CLI emits minified JSON; we re-indent it so the file is readable if opened
+// in an editor (view it interactively with `tilt snapshot view`).
 func CreateSnapshot(host string, port int, path string) error {
 	cmd := exec.Command("tilt", "snapshot", "create", path, "--host", host, "--port", strconv.Itoa(port))
-	return run(cmd)
+	if err := run(cmd); err != nil {
+		return err
+	}
+	prettifyJSON(path)
+	return nil
+}
+
+// prettifyJSON rewrites a JSON file indented for readability. Best-effort: any
+// error (unreadable, not JSON, unwritable) leaves the original file untouched.
+func prettifyJSON(path string) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, b, "", "  "); err != nil {
+		return
+	}
+	_ = os.WriteFile(path, buf.Bytes(), 0o644)
 }
 
 // run executes a tilt CLI command, returning any error with the CLI's combined
