@@ -126,14 +126,6 @@ func (r *UIResource) LastBuildDuration() (time.Duration, bool) {
 	return 0, false
 }
 
-// Restarts returns the running pod's restart count (k8s only; 0 otherwise).
-func (r *UIResource) Restarts() int {
-	if r.Status.K8sResourceInfo != nil {
-		return r.Status.K8sResourceInfo.PodRestarts
-	}
-	return 0
-}
-
 // Endpoints returns the resource's endpoint links (e.g. forwarded ports).
 func (r *UIResource) Endpoints() []Link { return r.Status.EndpointLinks }
 

@@ -94,8 +94,12 @@ func (m Model) updateOverviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "2", "3", "4", "5", "6", "7", "8", "9":
+		idx := int(msg.String()[0] - '2')
+		if idx < 0 || idx >= len(m.instances) {
+			return m, nil // no such instance: stay in the overview
+		}
 		m.overview = false
-		return m.gotoInstance(int(msg.String()[0] - '2'))
+		return m.gotoInstance(idx)
 	}
 	return m, nil
 }
@@ -229,7 +233,9 @@ func (m Model) renderOvHeader(i int, sel bool) string {
 	if v := m.views[in.Port]; v != nil {
 		c = v.StatusCounts()
 	}
-	tag := m.theme.accent().Render(fmt.Sprintf("‹%d›", i+1))
+	// Instances are numbered ‹2›, ‹3›, … to match the top bar and the digit keys
+	// that jump to them (‹1› is the overview itself).
+	tag := m.theme.accent().Render(fmt.Sprintf("‹%d›", i+2))
 	name := m.theme.header().Render(in.Label)
 	port := m.theme.muted().Render(fmt.Sprintf(":%d", in.Port))
 	ok := lipgloss.NewStyle().Foreground(m.theme.OK).Render(fmt.Sprintf("✓%d/%d", c.OK, c.Total))

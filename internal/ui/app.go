@@ -236,7 +236,19 @@ func (m Model) handleInstances(msg instancesMsg) (tea.Model, tea.Cmd) {
 			delete(m.viewErrs, p)
 		}
 	}
-	if m.view == nil || m.currentPort() != prevPort {
+	// If the active instance changed (the previously-active one went away, or this
+	// is the first discovery), point the focused pane at the new instance's cached
+	// view right away and refetch — don't linger on the old instance's data.
+	if m.currentPort() != prevPort {
+		port := m.currentPort()
+		m.view = m.views[port]
+		m.loadErr = m.viewErrs[port]
+		m.selected = 0
+		m.clampSelection()
+		m.setLogs()
+		return m, fetchCmd(m.currentHost(), port, m.token)
+	}
+	if m.view == nil {
 		return m, fetchCmd(m.currentHost(), m.currentPort(), m.token)
 	}
 	return m, nil
@@ -565,7 +577,7 @@ func (m Model) renderFooter() string {
 	var inner string
 	switch {
 	case m.overview:
-		keys := " ↑↓ move · ⏎ open · F only-failing · r trigger · 2-9 instance · 1/esc back · T theme · ? help · q quit"
+		keys := " ↑↓ move · ⏎ open · F only-failing · 2-9 instance · 1/esc back · T theme · ? help · q quit"
 		inner = ansi.Truncate(keys, m.width, "…")
 	case m.mode == modeLogFilter:
 		inner = fmt.Sprintf(" search logs: %s▏", m.typing)

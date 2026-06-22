@@ -49,7 +49,7 @@ func TestOverviewAcrossBackends(t *testing.T) {
 
 	m := New("", "localhost", 10350, "")
 	m = step(m, tea.WindowSizeMsg{Width: 160, Height: 40})
-	m = step(m, twoInstances()) // ‹1› app-one :10350, ‹2› app-two :10360
+	m = step(m, twoInstances()) // ‹2› app-one :10350, ‹3› app-two :10360
 	m = step(m, viewMsg{port: 10350, view: mustView(t, "view_k8s.json")})
 	m = step(m, viewMsg{port: 10360, view: failCompose(t)})
 
@@ -123,6 +123,43 @@ func TestOverviewIsLandingScreenAndToggles(t *testing.T) {
 	m = step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1")})
 	if !m.overview {
 		t.Error("1 should reopen the overview")
+	}
+}
+
+func TestOverviewInstanceNumbering(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(termenv.Ascii)
+
+	m := New("", "localhost", 10350, "")
+	m = step(m, tea.WindowSizeMsg{Width: 160, Height: 40})
+	m = step(m, twoInstances())
+	m = step(m, viewMsg{port: 10350, view: mustView(t, "view_k8s.json")})
+	m = step(m, viewMsg{port: 10360, view: mustView(t, "view_compose.json")})
+
+	// Instances are tagged ‹2›, ‹3›, … to match the digit keys that jump to them
+	// (‹1› is the overview itself, shown in the top bar).
+	for ln := range strings.SplitSeq(ansi.Strip(m.View()), "\n") {
+		if strings.Contains(ln, "app-one") && !strings.Contains(ln, "‹2›") {
+			t.Errorf("first instance row should be tagged ‹2›:\n%s", ln)
+		}
+		if strings.Contains(ln, "app-two") && !strings.Contains(ln, "‹3›") {
+			t.Errorf("second instance row should be tagged ‹3›:\n%s", ln)
+		}
+	}
+
+	// A digit with no matching instance is a no-op: it must not drop out of the
+	// overview onto the active instance.
+	m = step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("9")})
+	if !m.overview {
+		t.Error("an out-of-range instance digit should stay in the overview")
+	}
+	// The matching digit drills in.
+	m = step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
+	if m.overview {
+		t.Error("‹3› should leave the overview for the second instance")
+	}
+	if m.currentPort() != 10360 {
+		t.Errorf("‹3› should land on app-two (:10360), got :%d", m.currentPort())
 	}
 }
 
