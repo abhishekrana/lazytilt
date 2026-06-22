@@ -10,20 +10,13 @@ import (
 
 const sidebarWidth = 28
 
-// visible returns the resources shown in the sidebar: sorted by Tilt's order,
-// with disabled ones hidden unless toggled.
+// visible returns the resources shown in the sidebar, sorted by Tilt's order.
+// Disabled resources are always shown (so you can select one and re-enable it).
 func (m Model) visible() []tilt.UIResource {
 	if m.view == nil {
 		return nil
 	}
-	var out []tilt.UIResource
-	for _, r := range m.view.Resources() {
-		if r.IsDisabled() && !m.showDisabled {
-			continue
-		}
-		out = append(out, r)
-	}
-	return out
+	return m.view.Resources()
 }
 
 func (m Model) selectedResource() (tilt.UIResource, bool) {

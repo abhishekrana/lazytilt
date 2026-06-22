@@ -11,7 +11,7 @@ import (
 )
 
 // detailView builds a model on a synthetic instance and selects its first
-// resource, ready for the `i` detail toggle.
+// resource, with the always-on detail strip showing.
 func detailView(t *testing.T, v *tilt.View) Model {
 	t.Helper()
 	m := New("", "localhost", 10350, "")
@@ -48,7 +48,7 @@ func TestDetailStripSurfacesFetchedFields(t *testing.T) {
 	for _, want := range []string{
 		"api", "k8s", "pod api-7f9b9c", "restarts 2", "error", // header
 		"build ", "1.2s", // build duration
-		"http://localhost:8080", "o open · y copy", // endpoint
+		"http://localhost:8080", // endpoint (display only)
 		"labels", "backend", "tier1",
 	} {
 		if !strings.Contains(frame, want) {
@@ -60,33 +60,5 @@ func TestDetailStripSurfacesFetchedFields(t *testing.T) {
 	// status glyph flags the failure and the full text lives in the logs.
 	if strings.Contains(frame, "connection refused") {
 		t.Error("last error should not appear in the detail strip")
-	}
-}
-
-func TestEndpointActionDispatch(t *testing.T) {
-	withEP := &tilt.View{UIResources: []tilt.UIResource{{
-		Metadata: tilt.ObjectMeta{Name: "api"},
-		Status: tilt.UIResourceStatus{
-			UpdateStatus:  "ok",
-			Order:         1,
-			EndpointLinks: []tilt.Link{{URL: "http://localhost:8080"}},
-		},
-	}}}
-	m := detailView(t, withEP)
-	if _, cmd := m.endpointAction(false); cmd == nil {
-		t.Error("open should dispatch a command when an endpoint is present")
-	}
-	if _, cmd := m.endpointAction(true); cmd == nil {
-		t.Error("copy should dispatch a command when an endpoint is present")
-	}
-
-	noEP := &tilt.View{UIResources: []tilt.UIResource{{
-		Metadata: tilt.ObjectMeta{Name: "worker"},
-		Status:   tilt.UIResourceStatus{UpdateStatus: "ok", Order: 1},
-	}}}
-	m = detailView(t, noEP)
-	m = step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
-	if !m.statusErr || !strings.Contains(m.statusMsg, "no endpoint for worker") {
-		t.Errorf("expected a no-endpoint notice, got err=%v msg=%q", m.statusErr, m.statusMsg)
 	}
 }

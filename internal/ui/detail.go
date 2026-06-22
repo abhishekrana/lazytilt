@@ -23,12 +23,8 @@ func (m Model) detailLines(r tilt.UIResource, w int) []string {
 		lines = append(lines, m.theme.muted().Render("build ")+formatDuration(d))
 	}
 
-	for i, e := range r.Endpoints() {
-		line := m.theme.accent().Render(e.URL)
-		if i == 0 {
-			line += "   " + m.theme.muted().Render("o open · y copy")
-		}
-		lines = append(lines, line)
+	for _, e := range r.Endpoints() {
+		lines = append(lines, m.theme.accent().Render(e.URL))
 	}
 
 	if names := r.LabelNames(); len(names) > 0 {

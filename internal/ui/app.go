@@ -71,10 +71,10 @@ type Model struct {
 	mode            inputMode
 	typing          string
 	logFilter       string
-	pendingResource string // resource awaiting trigger confirmation
+	pendingResource string          // resource awaiting action confirmation
+	pendingAction   tilt.ActionKind // action awaiting confirmation
 
-	showDisabled bool
-	showHelp     bool
+	showHelp bool
 
 	statusMsg string
 	statusErr bool
@@ -264,12 +264,20 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if r, ok := m.selectedResource(); ok {
 			m.mode = modeConfirm
 			m.pendingResource = r.Name()
+			m.pendingAction = tilt.ActionTrigger
 		}
 		return m, nil
-	case "e":
-		return m.runAction(tilt.ActionEnable)
 	case "d":
-		return m.runAction(tilt.ActionDisable)
+		// One toggle: enable a disabled resource, disable an enabled one.
+		if r, ok := m.selectedResource(); ok {
+			m.mode = modeConfirm
+			m.pendingResource = r.Name()
+			m.pendingAction = tilt.ActionDisable
+			if r.IsDisabled() {
+				m.pendingAction = tilt.ActionEnable
+			}
+		}
+		return m, nil
 	case "f":
 		m.follow = !m.follow
 		m.setLogs()
@@ -282,15 +290,16 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.logFilter = ""
 		m.setLogs()
 		return m, nil
-	case "s":
-		m.showDisabled = !m.showDisabled
-		m.clampSelection()
-		m.setLogs()
-		return m, nil
 	case "o":
-		return m.endpointAction(false)
-	case "y":
-		return m.endpointAction(true)
+		if r, ok := m.selectedResource(); ok && m.view != nil {
+			return m, openLogsCmd(r.Name(), m.resourceLogText(r))
+		}
+		return m, nil
+	case "s":
+		if r, ok := m.selectedResource(); ok && m.view != nil {
+			return m, saveLogsCmd(r.Name(), m.resourceLogText(r))
+		}
+		return m, nil
 	case "T":
 		m.theme = m.theme.next()
 		return m, nil
@@ -357,19 +366,19 @@ func (m *Model) applyTyping() {
 	}
 }
 
-// updateConfirm handles the trigger confirmation prompt: y/enter confirms,
-// ctrl+c quits, anything else cancels.
+// updateConfirm handles the action confirmation prompt (trigger / enable /
+// disable): y/enter confirms, ctrl+c quits, anything else cancels.
 func (m Model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+c":
 		return m, tea.Quit
 	case "y", "Y", "enter":
-		res := m.pendingResource
+		res, act := m.pendingResource, m.pendingAction
 		m.mode = modeNormal
 		m.pendingResource = ""
-		m.statusMsg = fmt.Sprintf("trigger %s…", res)
+		m.statusMsg = fmt.Sprintf("%s %s…", act, res)
 		m.statusErr = false
-		return m, actionCmd(tilt.ActionTrigger, res, m.currentPort())
+		return m, actionCmd(act, res, m.currentPort())
 	default:
 		m.mode = modeNormal
 		m.pendingResource = ""
@@ -422,35 +431,6 @@ func (m Model) fetchAllCmds() []tea.Cmd {
 	return cmds
 }
 
-// endpointAction opens (toClipboard=false) or copies (toClipboard=true) the
-// selected resource's first endpoint URL, or reports that it has none.
-func (m Model) endpointAction(toClipboard bool) (tea.Model, tea.Cmd) {
-	r, ok := m.selectedResource()
-	if !ok {
-		return m, nil
-	}
-	u := r.FirstEndpointURL()
-	if u == "" {
-		m.statusMsg = "no endpoint for " + r.Name()
-		m.statusErr = true
-		return m, nil
-	}
-	if toClipboard {
-		return m, copyURLCmd(u)
-	}
-	return m, openURLCmd(u)
-}
-
-func (m Model) runAction(kind tilt.ActionKind) (tea.Model, tea.Cmd) {
-	r, ok := m.selectedResource()
-	if !ok {
-		return m, nil
-	}
-	m.statusMsg = fmt.Sprintf("%s %s…", kind, r.Name())
-	m.statusErr = false
-	return m, actionCmd(kind, r.Name(), m.currentPort())
-}
-
 func (m Model) View() string {
 	if m.width == 0 || m.height == 0 {
 		return "loading…"
@@ -475,10 +455,14 @@ func (m Model) View() string {
 	return frame
 }
 
-// confirmBox is the trigger confirmation popup, centered by overlayCenter.
+// confirmBox is the action confirmation popup, centered by overlayCenter.
 func (m Model) confirmBox() string {
+	verb := m.pendingAction.String()
+	if verb != "" {
+		verb = strings.ToUpper(verb[:1]) + verb[1:]
+	}
 	lines := []string{
-		m.theme.header().Render("Trigger " + m.pendingResource + "?"),
+		m.theme.header().Render(verb + " " + m.pendingResource + "?"),
 		"",
 		m.theme.muted().Render("(y) yes        (n) no"),
 	}
@@ -538,7 +522,7 @@ func (m Model) renderFooter() string {
 		}
 		inner = lipgloss.NewStyle().Foreground(c).Render(ansi.Truncate(" "+m.statusMsg, m.width, "…"))
 	default:
-		keys := " ↑↓ move · r trigger · e/d enable·disable · ⏎ logs · / search · f follow · L level · s disabled · o/y endpoint · 1 overview · 2-9/[ ] instance · T theme · ? help · q quit"
+		keys := " ↑↓ move · r trigger · d enable/disable · ⏎ logs · / search · f follow · L level · o open in editor · s save logs · 1 overview · 2-9/[ ] instance · T theme · ? help · q quit"
 		inner = ansi.Truncate(keys, m.width, "…")
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, rule, m.theme.footer().Width(m.width).Render(inner))
@@ -554,13 +538,13 @@ func (m Model) helpBox() string {
 		{"2 … 9", "jump to instance N"},
 		{"[  ]", "previous / next instance"},
 		{"r", "trigger / restart (asks y/n)"},
-		{"e  d", "enable / disable"},
-		{"o  y", "open / copy endpoint URL"},
+		{"d", "enable / disable (asks y/n)"},
 		{"/", "search logs (highlights matches)"},
 		{"f", "follow / tail logs"},
 		{"L", "cycle log level"},
 		{"c", "clear log filter"},
-		{"s", "toggle disabled resources"},
+		{"o", "open logs in $EDITOR (vim)"},
+		{"s", "save logs to a temp file"},
 		{"T", "cycle theme (" + m.theme.Name + ")"},
 		{"g  G", "top / bottom of logs"},
 		{"?  esc", "close this help"},

@@ -137,16 +137,6 @@ func (r *UIResource) Restarts() int {
 // Endpoints returns the resource's endpoint links (e.g. forwarded ports).
 func (r *UIResource) Endpoints() []Link { return r.Status.EndpointLinks }
 
-// FirstEndpointURL returns the first non-empty endpoint URL, or "" if none.
-func (r *UIResource) FirstEndpointURL() string {
-	for _, l := range r.Status.EndpointLinks {
-		if l.URL != "" {
-			return l.URL
-		}
-	}
-	return ""
-}
-
 // LabelNames returns the resource's label keys, sorted, for display.
 func (r *UIResource) LabelNames() []string {
 	if len(r.Metadata.Labels) == 0 {

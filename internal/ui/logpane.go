@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 
+	"github.com/abhishekrana/lazytilt/internal/tilt"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -87,6 +88,25 @@ func (m *Model) setLogs() {
 	if m.follow {
 		m.vp.GotoBottom()
 	}
+}
+
+// resourceLogText assembles the full, plain-text logs for a resource: every
+// segment, every level, with carriage-return/control noise neutralized and ANSI
+// color stripped. It backs the "save logs" action, so the file opens cleanly in
+// an editor rather than carrying escape codes.
+func (m Model) resourceLogText(r tilt.UIResource) string {
+	if m.view == nil {
+		return ""
+	}
+	var b strings.Builder
+	for _, s := range m.view.LogList.SegmentsFor(r.Name()) {
+		b.WriteString(s.Text)
+	}
+	out := make([]string, 0, 64)
+	for ln := range strings.SplitSeq(strings.TrimRight(b.String(), "\n"), "\n") {
+		out = append(out, ansi.Strip(sanitizeLogLine(ln)))
+	}
+	return strings.Join(out, "\n") + "\n"
 }
 
 // highlightMatches wraps every case-insensitive occurrence of term in s with the

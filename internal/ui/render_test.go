@@ -73,9 +73,9 @@ func TestRenderFrame(t *testing.T) {
 			t.Errorf("frame missing %q", want)
 		}
 	}
-	// Disabled resource hidden by default.
-	if strings.Contains(frame, "batch-job") {
-		t.Error("disabled resource should be hidden by default")
+	// Disabled resources are always shown now (so you can select and re-enable one).
+	if !strings.Contains(frame, "batch-job") {
+		t.Error("disabled resource should be visible")
 	}
 	t.Logf("\n%s", frame)
 }
