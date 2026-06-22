@@ -69,6 +69,9 @@ so start/stop is reflected live, pruning cached views for instances that disappe
   even (painting a bg fights Tilt's log ANSI and looked patchy). See `internal/ui/theme.go`.
 - **Sanitize log output.** `sanitizeLogLine` strips carriage returns (curl/progress output) and other C0 controls before
   rendering — verbatim `\r` jumps the cursor to column 0 and corrupts the layout.
+- **Tab numbering is `‹1›` = overview, `‹2›…‹9›` = instances.** This invariant spans three places that must agree: the
+  top bar (`renderTopBar`), the overview header tags (`renderOvHeader`, `i+2`), and the digit-key handlers (`'2'` ⇒
+  instance index 0). The overview itself is reached/left with `1`; out-of-range digits are no-ops.
 - **Keep it simple.** Flat resource list (no grouping), minimal panels. Prefer the smallest change.
 - **Commits:** do not add `Co-Authored-By` lines.
 

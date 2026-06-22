@@ -6,6 +6,9 @@ lazytilt mirrors the Tilt web UI in your terminal and lets you **switch between 
 same machine without restarting** — handy when you have several `tilt up` sessions going at once. Kubernetes and
 docker-compose instances render through one consistent UI.
 
+It opens on a cross-instance **overview** (`‹1›`) summarizing the health of every discovered instance; `esc` or a digit
+key drills into a single instance, and `1` brings the overview back.
+
 ## Install / run
 
 ```sh
@@ -20,24 +23,28 @@ Themes: `--theme solarized-light` (default), `solarized-dark`, or `dark`; press 
 
 ## Keys
 
-| Key             | Action                                         |
-| --------------- | ---------------------------------------------- |
-| `↑`/`k` `↓`/`j` | move selection                                 |
-| `⏎` / `tab`     | focus the log pane / toggle pane               |
-| `esc`           | back to the resource list                      |
-| `[` `]`         | previous / next Tilt instance (no restart)     |
-| `1`…`9`         | jump directly to that Tilt instance            |
-| `r`             | trigger (rebuild) the selected resource        |
-| `e` / `d`       | enable / disable the selected resource         |
-| `/`             | filter (resources or logs, depending on focus) |
-| `f`             | toggle log follow/tail                         |
-| `L`             | cycle log level (all / errors / warnings)      |
-| `c`             | clear the log text filter                      |
-| `s`             | show/hide disabled resources                   |
-| `T`             | cycle color theme                              |
-| `g` / `G`       | jump to top / bottom of logs                   |
-| `?`             | help                                           |
-| `q` / `ctrl+c`  | quit                                           |
+| Key             | Action                                                           |
+| --------------- | ---------------------------------------------------------------- |
+| `↑`/`k` `↓`/`j` | move selection                                                   |
+| `⏎` / `tab`     | focus the log pane / toggle pane                                 |
+| `esc`           | back to the resource list (from the overview: into the instance) |
+| `1`             | overview — cross-instance health (the landing screen)            |
+| `F`             | overview: show only failing instances                            |
+| `2`…`9`         | jump directly to that Tilt instance                              |
+| `[` `]`         | previous / next Tilt instance (no restart)                       |
+| `r`             | trigger (rebuild) the selected resource (asks y/n)               |
+| `R`             | trigger all resources in the instance (asks y/n)                 |
+| `d`             | enable / disable the selected resource (asks y/n)                |
+| `/`             | search logs (highlights matches)                                 |
+| `f`             | toggle log follow/tail                                           |
+| `L`             | cycle log level (all / errors / warnings)                        |
+| `c`             | clear the log search filter                                      |
+| `o`             | open the selected resource's logs in `$EDITOR` (else vim)        |
+| `s`             | save the selected resource's logs to a temp file                 |
+| `T`             | cycle color theme                                                |
+| `g` / `G`       | jump to top / bottom of logs                                     |
+| `?`             | help                                                             |
+| `q` / `ctrl+c`  | quit                                                             |
 
 ## How it works
 
