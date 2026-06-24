@@ -42,6 +42,10 @@ type Model struct {
 	fallbackHost  string
 	fallbackPort  int
 
+	// events is the channel the Hub pushes viewMsg/instancesMsg onto. Init starts
+	// the listen loop and each hub-sourced message re-arms it (see listenCmd).
+	events chan tea.Msg
+
 	instances []discovery.Instance
 	active    int
 
@@ -66,6 +70,10 @@ type Model struct {
 	vp     viewport.Model
 	follow bool
 	level  logLevel
+
+	// renderedSegs is the active view's log-segment count at the last setLogs, so
+	// a status-only delta (segment count unchanged) can skip the full re-assembly.
+	renderedSegs int
 
 	mode              inputMode
 	typing            string
@@ -99,11 +107,19 @@ func New(token, host string, port int, themeName string) Model {
 		views:        map[int]*tilt.View{},
 		viewErrs:     map[int]error{},
 		overview:     true, // land on the cross-instance overview; esc/digit drills in
+		// Buffered so the Hub's watcher goroutines don't block on each other between
+		// the UI consuming one message and re-arming the listen.
+		events: make(chan tea.Msg, 128),
 	}
 }
 
+// Events is the channel the UI listens on; hand it to a Hub so its websocket
+// deltas reach the Bubble Tea loop. The channel is shared even though the Model
+// is copied by value (a channel header aliases the same underlying channel).
+func (m Model) Events() chan tea.Msg { return m.events }
+
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(discoverCmd(), tickCmd())
+	return listenCmd(m.events)
 }
 
 func (m Model) currentPort() int {
@@ -161,22 +177,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.updateKeys(msg)
 
-	case tickMsg:
-		// Re-discover on every tick: a /proc scan is only a few ms, and polling it
-		// each second means a freshly-started `tilt up` (or one that restarted on a
-		// new PID) shows up within ~1s instead of lagging up to ~5s behind.
-		cmds := append([]tea.Cmd{tickCmd(), discoverCmd()}, m.fetchAllCmds()...)
-		return m, tea.Batch(cmds...)
-
 	case viewMsg:
 		// Cache every instance's view by port for the badges/overview; only the
-		// active instance's response updates the focused pane and log viewport.
+		// active instance's snapshot updates the focused pane and log viewport.
+		// Re-arm the listen so the next hub message is delivered.
 		if msg.err != nil {
 			m.viewErrs[msg.port] = msg.err
 			if msg.port == m.currentPort() {
 				m.loadErr = msg.err
 			}
-			return m, nil
+			return m, listenCmd(m.events)
 		}
 		delete(m.viewErrs, msg.port)
 		m.views[msg.port] = msg.view
@@ -184,14 +194,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.loadErr = nil
 			m.view = msg.view
 			m.clampSelection()
-			m.setLogs()
+			// Only re-assemble the log viewport when the log pane is visible and the
+			// log actually grew. Status-only deltas (and every delta while on the
+			// overview screen) skip the full O(total-logs) rebuild — this is what
+			// keeps idle CPU near zero on chatty stacks.
+			if !m.overview && len(m.view.LogList.Segments) != m.renderedSegs {
+				m.setLogs()
+			}
 		}
-		return m, nil
+		return m, listenCmd(m.events)
 
 	case instancesMsg:
-		return m.handleInstances(msg)
+		m = m.handleInstances(msg)
+		return m, listenCmd(m.events)
 
 	case actionResultMsg:
+		// No refetch needed: the websocket stream reflects the resulting status
+		// change on its own.
 		if msg.err != nil {
 			m.statusMsg = fmt.Sprintf("%s %s failed: %v", msg.kind, msg.resource, msg.err)
 			m.statusErr = true
@@ -199,7 +218,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.statusMsg = fmt.Sprintf("%s %s ✓", msg.kind, msg.resource)
 			m.statusErr = false
 		}
-		return m, fetchCmd(m.currentHost(), m.currentPort(), m.token)
+		return m, nil
 
 	case notifyMsg:
 		m.statusMsg = msg.text
@@ -209,7 +228,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) handleInstances(msg instancesMsg) (tea.Model, tea.Cmd) {
+func (m Model) handleInstances(msg instancesMsg) Model {
 	insts := msg.instances
 	if len(insts) == 0 {
 		insts = []discovery.Instance{{Host: m.fallbackHost, Port: m.fallbackPort, Label: m.fallbackHost}}
@@ -223,7 +242,7 @@ func (m Model) handleInstances(msg instancesMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	// Drop cached views for instances that have gone away, so stale health never
-	// lingers in the badges/overview.
+	// lingers in the badges/overview. (The Hub closes their websockets in step.)
 	valid := make(map[int]bool, len(insts))
 	for _, in := range insts {
 		valid[in.Port] = true
@@ -236,7 +255,8 @@ func (m Model) handleInstances(msg instancesMsg) (tea.Model, tea.Cmd) {
 	}
 	// If the active instance changed (the previously-active one went away, or this
 	// is the first discovery), point the focused pane at the new instance's cached
-	// view right away and refetch — don't linger on the old instance's data.
+	// view. The Hub streams every instance continuously, so the snapshot is already
+	// warm (or arrives momentarily) — no refetch needed.
 	if m.currentPort() != prevPort {
 		port := m.currentPort()
 		m.view = m.views[port]
@@ -244,12 +264,8 @@ func (m Model) handleInstances(msg instancesMsg) (tea.Model, tea.Cmd) {
 		m.selected = 0
 		m.clampSelection()
 		m.setLogs()
-		return m, fetchCmd(m.currentHost(), port, m.token)
 	}
-	if m.view == nil {
-		return m, fetchCmd(m.currentHost(), m.currentPort(), m.token)
-	}
-	return m, nil
+	return m
 }
 
 func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -449,9 +465,9 @@ func (m Model) switchInstance(d int) (tea.Model, tea.Cmd) {
 }
 
 // gotoInstance switches to the instance at idx (0-based) without a restart; a
-// no-op if idx is out of range or already active. The switch is instant when the
-// target's view is already cached (it usually is — we poll every instance); on a
-// cache miss it shows "connecting…" and fetches.
+// no-op if idx is out of range or already active. The switch is instant: the
+// Hub streams every instance, so the target's snapshot is already cached (a
+// brief blank pane until the first snapshot arrives if it isn't yet).
 func (m Model) gotoInstance(idx int) (tea.Model, tea.Cmd) {
 	if idx < 0 || idx >= len(m.instances) || idx == m.active {
 		return m, nil
@@ -464,26 +480,7 @@ func (m Model) gotoInstance(idx int) (tea.Model, tea.Cmd) {
 	m.statusMsg = ""
 	m.clampSelection()
 	m.setLogs()
-	if m.view == nil {
-		return m, fetchCmd(m.currentHost(), port, m.token)
-	}
 	return m, nil
-}
-
-// fetchAllCmds returns one fetch per discovered instance (so the badges and
-// overview stay current), or a single fallback fetch before discovery has run.
-func (m Model) fetchAllCmds() []tea.Cmd {
-	if len(m.instances) == 0 {
-		if m.fallbackPort != 0 {
-			return []tea.Cmd{fetchCmd(m.fallbackHost, m.fallbackPort, m.token)}
-		}
-		return nil
-	}
-	cmds := make([]tea.Cmd, 0, len(m.instances))
-	for _, in := range m.instances {
-		cmds = append(cmds, fetchCmd(in.Host, in.Port, m.token))
-	}
-	return cmds
 }
 
 func (m Model) View() string {

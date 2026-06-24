@@ -1,32 +1,26 @@
 package ui
 
 import (
-	"context"
 	"fmt"
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/abhishekrana/lazytilt/internal/discovery"
 	"github.com/abhishekrana/lazytilt/internal/tilt"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-const pollInterval = time.Second
-
-// tickMsg drives the poll/refresh loop.
-type tickMsg struct{}
-
-// viewMsg carries a fetched view, tagged with the port it came from so stale
-// responses (after an instance switch) can be dropped.
+// viewMsg carries a merged view snapshot for one instance (or a stream error),
+// tagged with the port it came from so a stale instance's data can be dropped.
+// The Hub pushes these onto the events channel as websocket deltas arrive.
 type viewMsg struct {
 	port int
 	view *tilt.View
 	err  error
 }
 
-// instancesMsg carries the latest discovery result.
+// instancesMsg carries the latest discovery result (pushed by the Hub).
 type instancesMsg struct {
 	instances []discovery.Instance
 }
@@ -45,22 +39,11 @@ type notifyMsg struct {
 	err  bool
 }
 
-func tickCmd() tea.Cmd {
-	return tea.Tick(pollInterval, func(time.Time) tea.Msg { return tickMsg{} })
-}
-
-func discoverCmd() tea.Cmd {
-	return func() tea.Msg { return instancesMsg{instances: discovery.Discover()} }
-}
-
-func fetchCmd(host string, port int, token string) tea.Cmd {
-	return func() tea.Msg {
-		c := tilt.NewClient(host, port, token)
-		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-		defer cancel()
-		v, err := c.FetchView(ctx)
-		return viewMsg{port: port, view: v, err: err}
-	}
+// listenCmd waits for the next message the Hub pushes onto the events channel.
+// The Update loop re-arms it after each hub-sourced message, so exactly one read
+// is ever outstanding — this is what drives the UI now that polling is gone.
+func listenCmd(ch <-chan tea.Msg) tea.Cmd {
+	return func() tea.Msg { return <-ch }
 }
 
 func actionCmd(kind tilt.ActionKind, resource string, port int) tea.Cmd {

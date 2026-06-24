@@ -44,8 +44,17 @@ func (l logLevel) label() string {
 // single resource or the combined "All Resources" stream — applying the level and
 // text filters and wrapping to the pane width.
 func (m *Model) setLogs() {
+	// The log pane is hidden behind the overview screen, so there's nothing to
+	// render; skipping the full log re-assembly here is the bulk of the idle-CPU
+	// win on log-chatty stacks.
+	if m.overview {
+		return
+	}
 	if m.vp.Width <= 0 {
 		return
+	}
+	if m.view != nil {
+		m.renderedSegs = len(m.view.LogList.Segments)
 	}
 	r, ok := m.selectedResource()
 

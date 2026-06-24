@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -43,7 +44,16 @@ func main() {
 
 	token, _ := tilt.ReadToken()
 
-	p := tea.NewProgram(ui.New(token, *host, *port, *theme), tea.WithAltScreen())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// The model owns the event channel; hand it to the hub, which discovers
+	// instances and streams their /ws/view deltas onto it.
+	m := ui.New(token, *host, *port, *theme)
+	hub := ui.NewHub(token, *host, *port, m.Events())
+	go hub.Run(ctx)
+
+	p := tea.NewProgram(m, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "lazytilt:", err)
 		os.Exit(1)
