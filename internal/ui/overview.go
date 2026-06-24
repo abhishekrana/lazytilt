@@ -171,15 +171,16 @@ func (m Model) renderOverview(h int) string {
 		}
 		lines = append(lines, " "+m.theme.muted().Render(msg))
 	}
+	nameW := m.ovNameWidth(rows)
 	for i, row := range rows {
 		var line string
 		if row.header {
 			if i > 0 {
 				lines = append(lines, "") // blank line between instance blocks
 			}
-			line = m.renderOvHeader(row.inst, i == m.overviewSel)
+			line = m.renderOvHeader(row.inst, nameW, i == m.overviewSel)
 		} else {
-			line = m.renderOvResource(row.res, i == m.overviewSel)
+			line = m.renderOvResource(row.res, nameW, i == m.overviewSel)
 		}
 		lines = append(lines, ansi.Truncate(line, m.width, "…"))
 	}
@@ -221,15 +222,41 @@ func (m Model) overviewSummary() string {
 
 // Overview column widths (display cells). Header and resource rows share these
 // offsets so the failing-resource sub-rows line up under their instance, with
-// generous gutters between columns.
+// generous gutters between columns. The name column is sized to its content at
+// render time (see ovNameWidth); ovNameW is just its minimum floor.
 const (
 	ovTagW   = 6  // "‹2›" plus breathing room
-	ovNameW  = 26 // instance label / resource name
+	ovNameW  = 26 // instance label / resource name (minimum)
 	ovPortW  = 16 // ":10350"
 	ovBadgeW = 18 // ✕N ⟳N …N
 )
 
-func (m Model) renderOvHeader(i int, sel bool) string {
+// ovNameWidth sizes the name column to the longest instance label / resource
+// name on screen, plus a 2-cell gutter so a full-width name never butts against
+// the detail column. It floors at ovNameW and caps so a header row (tag + name +
+// port + badge + ✓ok) still fits the terminal width.
+func (m Model) ovNameWidth(rows []ovRow) int {
+	w := ovNameW
+	for _, row := range rows {
+		name := ""
+		if row.header {
+			name = m.instances[row.inst].Label
+		} else {
+			name = row.res.Name()
+		}
+		if c := lipgloss.Width(name) + 2; c > w {
+			w = c
+		}
+	}
+	// Reserve room for the columns that trail the name (tag/port/badge/✓ok plus
+	// the marker gutter); below that the line would just truncate anyway.
+	if capW := m.width - (ovTagW + ovPortW + ovBadgeW + 10); capW > ovNameW && w > capW {
+		w = capW
+	}
+	return w
+}
+
+func (m Model) renderOvHeader(i, nameW int, sel bool) string {
 	in := m.instances[i]
 	var c tilt.StatusCounts
 	if v := m.views[in.Port]; v != nil {
@@ -242,11 +269,11 @@ func (m Model) renderOvHeader(i int, sel bool) string {
 	port := m.theme.muted().Render(fmt.Sprintf(":%d", in.Port))
 	ok := lipgloss.NewStyle().Foreground(m.theme.OK).Render(fmt.Sprintf("✓%d/%d", c.OK, c.Total))
 	return ovMarker(m.theme, sel) +
-		cell(tag, ovTagW) + cell(name, ovNameW) + cell(port, ovPortW) +
+		cell(tag, ovTagW) + cell(name, nameW) + cell(port, ovPortW) +
 		cell(m.ovBadges(in.Port, c), ovBadgeW) + ok
 }
 
-func (m Model) renderOvResource(r tilt.UIResource, sel bool) string {
+func (m Model) renderOvResource(r tilt.UIResource, nameW int, sel bool) string {
 	st := r.State()
 	glyph := lipgloss.NewStyle().Foreground(m.theme.StatusColor(st)).Render(statusGlyph(st))
 	name := lipgloss.NewStyle().Foreground(m.theme.Text).Render(r.Name())
@@ -264,7 +291,7 @@ func (m Model) renderOvResource(r tilt.UIResource, sel bool) string {
 	// glyph sits just to the left); the detail then aligns under the port column.
 	// ovTagW-2 keeps the name under the header's name regardless of the tag width.
 	prefix := ovMarker(m.theme, sel) + strings.Repeat(" ", ovTagW-2) + glyph + " "
-	return prefix + cell(name, ovNameW) + m.theme.muted().Render(detail)
+	return prefix + cell(name, nameW) + m.theme.muted().Render(detail)
 }
 
 // ovBadges renders an instance's error/building/pending tallies, or "healthy" /

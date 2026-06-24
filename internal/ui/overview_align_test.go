@@ -105,3 +105,36 @@ func TestOverviewColumnsAlign(t *testing.T) {
 		}
 	}
 }
+
+// TestOverviewLongNameNotTruncated guards the name column auto-sizing: a resource
+// name longer than the fixed floor must render in full with a gutter before its
+// detail, not get clipped and butt straight against "compose" (the overlap bug).
+func TestOverviewLongNameNotTruncated(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(termenv.Ascii)
+
+	const longName = "dual-franka-robot-state-publisher" // 33 cells, well past ovNameW
+	v := &tilt.View{UIResources: []tilt.UIResource{{
+		Metadata: tilt.ObjectMeta{Name: longName},
+		Status: tilt.UIResourceStatus{
+			UpdateStatus: "in_progress", // building => shown as a resource row
+			Compose:      &tilt.ComposeResourceInfo{},
+		},
+	}}}
+
+	m := New("", "localhost", 10350, "")
+	m = step(m, tea.WindowSizeMsg{Width: 160, Height: 30})
+	m = step(m, instancesMsg{instances: []discovery.Instance{
+		{Host: "localhost", Port: 10350, Label: "data-farm"},
+	}})
+	m = step(m, viewMsg{port: 10350, view: v})
+
+	out := ansi.Strip(m.View())
+	if !strings.Contains(out, longName) {
+		t.Fatalf("long resource name was truncated; frame:\n%s", out)
+	}
+	// A full-width name must still be followed by a gutter, never the detail directly.
+	if !strings.Contains(out, longName+"  ") || strings.Contains(out, longName+" compose") {
+		t.Errorf("missing gutter between name and detail (overlap); frame:\n%s", out)
+	}
+}
