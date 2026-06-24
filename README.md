@@ -79,10 +79,11 @@ Themes: `--theme solarized-light` (default), `solarized-dark`, or `dark`; press 
 
 ## How it works
 
-- **State** is read by polling Tilt's `GET /api/view` (the same data the web UI uses), authenticated with the token at
-  `~/.tilt-dev/token` when present.
+- **State** is streamed from Tilt's `/ws/view` websocket (the same feed the web UI uses): an initial snapshot then
+  incremental deltas, so the UI does work only when something actually changes. The handshake is authenticated with a
+  CSRF token from `/api/websocket_token` (fetched using the session token at `~/.tilt-dev/token` when present).
 - **Actions** (trigger / enable / disable) shell out to the `tilt` CLI scoped with `--port`, so they target the right
-  instance.
+  instance; the resulting status change just streams back.
 - **Discovery** scans local `tilt up` processes for their port and working directory.
 
 Status colors: green = ok, red = error, orange = building, yellow = pending, grey = disabled/idle.

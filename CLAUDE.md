@@ -43,21 +43,30 @@ go run . --port 10351 --theme solarized-dark       # fallback instance + theme
 main.go                 flag parse + tea.NewProgram
 internal/tilt/          one Tilt instance: client + decode + actions (no UI)
   types.go              hand-rolled View/UIResource/LogList structs (camelCase JSON)
-  client.go             GET /api/view (+ X-Tilt-Token), ParseView
+  client.go             /api/websocket_token (CSRF) + FetchView (GET /api/view, used by the live test); ParseView
+  ws.go                 gorilla/websocket client for /ws/view: WatchView streams the snapshot + deltas
+  accumulator.go        folds Tilt's incremental ws deltas (changed resources, new log segments) into full Views
   status.go             updateStatus/runtimeStatus -> combined Status; backend + runtime line
   logs.go               span->manifest log assembly; AllLines = interleaved, source-tagged (All-Resources view)
   actions.go            shell out: tilt trigger|enable|disable <res> --port <port>; tilt snapshot create
 internal/discovery/     find `tilt up` processes -> []Instance; Linux /proc, macOS ps/lsof (discovery_<goos>.go)
 internal/ui/            Bubble Tea: app.go (model/Update/View), sidebar, logpane, overview, theme, messages
+  hub.go                I/O owner: discovers instances + one /ws/view per instance -> viewMsg/instancesMsg on a channel
   overview.go           cross-instance ‹1› dashboard (the landing screen) + top-bar health badges; esc/digit drills in
 ```
 
-Data flow: a 1s tick fetches `GET /api/view` for **every** discovered instance, caching each by port in `Model.views`
-(so the top-bar badges and the ‹1› overview show cross-instance health without switching); the active instance's
-response also drives the focused pane and log viewport. The websocket is intentionally **not** used (polling is simpler
-and was the deliberate choice). Actions shell out to the `tilt` CLI scoped by `--port`. Discovery re-runs every tick
-(the /proc scan is only a few ms) so start/stop is reflected within ~1s, pruning cached views for instances that
-disappear.
+Data flow: the `Hub` (`internal/ui/hub.go`) is the single I/O owner. It rediscovers instances every ~2s (a /proc scan of
+a few ms, so a started/stopped `tilt up` shows up within ~2s) and holds one `/ws/view` websocket per instance. Tilt
+sends an initial full snapshot then incremental deltas (only changed uiResources, only new log segments); a
+`ViewAccumulator` folds each stream into a complete `*View`, and the Hub pushes those as `viewMsg`s (plus
+`instancesMsg`) onto a channel the model drains via `listenCmd` (re-armed after each hub message). Each port's snapshot
+is cached in `Model.views` so the top-bar badges and the ‹1› overview show cross-instance health without switching; the
+active instance's snapshot drives the focused pane and log viewport. The UI does work only when something actually
+changes — and `setLogs` skips the full log re-assembly while the overview is up or when the log didn't grow — so idle
+CPU stays near zero even on log-chatty stacks. Actions shell out to the `tilt` CLI scoped by `--port`; the resulting
+status change just streams back. Auth: the websocket handshake uses a CSRF token from `/api/websocket_token` (fetched
+with the `~/.tilt-dev/token` session token), not the `X-Tilt-Token` header, which a browser — and the ws upgrade — can't
+set.
 
 ## Conventions & gotchas (important)
 
