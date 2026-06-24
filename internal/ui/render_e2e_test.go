@@ -1,0 +1,106 @@
+package ui
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/abhishekrana/lazytilt/internal/discovery"
+	"github.com/abhishekrana/lazytilt/internal/tilt"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
+)
+
+// End-to-end render tests: build the model, feed it a view the way the Hub would,
+// drive it like a user, and assert on the rendered frame. Fixtures use generic
+// mock names only (api / worker / web; labels backend / frontend).
+
+func e2eRes(name, label string) tilt.UIResource {
+	return tilt.UIResource{
+		Metadata: tilt.ObjectMeta{Name: name, Labels: map[string]string{label: ""}},
+		Status:   tilt.UIResourceStatus{UpdateStatus: "ok", RuntimeStatus: "ok"},
+	}
+}
+
+// drive builds a model, sizes it, feeds one instance + view, and leaves the
+// overview so the sidebar and log pane are active — the state a user lands in
+// after drilling into an instance.
+func drive(t *testing.T, view *tilt.View) Model {
+	t.Helper()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+	m := New("", "localhost", 10350, "")
+	m = step(m, tea.WindowSizeMsg{Width: 120, Height: 30})
+	m = step(m, instancesMsg{instances: []discovery.Instance{{Host: "localhost", Port: 10350, Label: "app"}}})
+	m = step(m, viewMsg{port: 10350, view: view})
+	m = step(m, tea.KeyMsg{Type: tea.KeyEsc}) // leave the overview into the instance
+	return m
+}
+
+// A selected resource's logs must render even when the sidebar is label-grouped.
+func TestSelectedResourceLogsRenderWithLabelGroups(t *testing.T) {
+	view := &tilt.View{
+		UIResources: []tilt.UIResource{
+			e2eRes("web", "frontend"),
+			e2eRes("api", "backend"),
+			e2eRes("worker", "backend"),
+		},
+		LogList: tilt.LogList{
+			Spans:    map[string]tilt.LogSpan{"s:api": {ManifestName: "api"}},
+			Segments: []tilt.LogSegment{{SpanID: "s:api", Text: "api log line\n", Level: "INFO"}},
+		},
+	}
+	m := drive(t, view)
+	m.selectByName("api")
+	m.setLogs()
+
+	if r, ok := m.selectedResource(); !ok || r.Name() != "api" {
+		t.Fatalf("selection did not resolve to api (ok=%v)", ok)
+	}
+	if frame := m.View(); !strings.Contains(frame, "api log line") {
+		t.Fatalf("selected resource's log text not rendered:\n%s", frame)
+	}
+}
+
+// Regression: a resource that emits CRLF ("\r\n") line endings must still render.
+// sanitizeLogLine used to keep only the text after the last CR, so a line that
+// merely ended with a carriage return collapsed to "" and the pane looked empty.
+func TestCRLFResourceLogsRender(t *testing.T) {
+	view := &tilt.View{
+		UIResources: []tilt.UIResource{e2eRes("api", "backend")},
+		LogList: tilt.LogList{
+			Spans: map[string]tilt.LogSpan{"s:api": {ManifestName: "api"}},
+			Segments: []tilt.LogSegment{
+				{SpanID: "s:api", Text: "first crlf line\r\nsecond crlf line\r\n", Level: "INFO"},
+			},
+		},
+	}
+	m := drive(t, view)
+	m.selectByName("api")
+	m.setLogs()
+
+	frame := m.View()
+	for _, want := range []string{"first crlf line", "second crlf line"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("CRLF log line %q not rendered:\n%s", want, frame)
+		}
+	}
+}
+
+// The combined "All Resources" view (selection row 0) must also render CRLF lines.
+func TestCRLFLogsRenderInCombinedView(t *testing.T) {
+	view := &tilt.View{
+		UIResources: []tilt.UIResource{e2eRes("api", "backend")},
+		LogList: tilt.LogList{
+			Spans:    map[string]tilt.LogSpan{"s:api": {ManifestName: "api"}},
+			Segments: []tilt.LogSegment{{SpanID: "s:api", Text: "combined crlf line\r\n", Level: "INFO"}},
+		},
+	}
+	m := drive(t, view)
+	m.selected = 0 // All Resources row
+	m.setLogs()
+
+	if frame := m.View(); !strings.Contains(frame, "combined crlf line") {
+		t.Fatalf("CRLF line not rendered in combined view:\n%s", frame)
+	}
+}

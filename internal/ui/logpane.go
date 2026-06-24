@@ -229,6 +229,10 @@ func highlightMatches(s, term string, style lipgloss.Style) string {
 // (what a terminal would ultimately display), turn tabs into spaces, and drop
 // other C0 controls. ESC is preserved so SGR color sequences still render.
 func sanitizeLogLine(s string) string {
+	// Drop trailing CR first so CRLF ("…\r\n", split into "…\r") line endings keep
+	// their text. Only an *interior* CR is a progress/overwrite sequence where the
+	// final write wins — collapse those to the text after the last CR.
+	s = strings.TrimRight(s, "\r")
 	if i := strings.LastIndexByte(s, '\r'); i >= 0 {
 		s = s[i+1:]
 	}

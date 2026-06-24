@@ -37,8 +37,9 @@ func TestHighlightMatches(t *testing.T) {
 func TestSanitizeLogLine(t *testing.T) {
 	cases := map[string]string{
 		"plain":             "plain",
-		"a\rb\rc":           "c",                 // carriage returns: keep the final overwrite
-		"progress\r":        "",                  // trailing \r leaves nothing
+		"a\rb\rc":           "c",                 // interior CR (progress overwrite): final write wins
+		"crlf line\r":       "crlf line",         // CRLF ending ("…\r\n" split on \n): trailing CR stripped, text kept
+		"a\rb\r":            "b",                 // overwrite then trailing CR: keep the last write
 		"tab\tsep":          "tab  sep",          // tab -> spaces
 		"x\x08y":            "xy",                // other C0 controls dropped
 		"\x1b[32mok\x1b[0m": "\x1b[32mok\x1b[0m", // ESC/SGR preserved
