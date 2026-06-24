@@ -69,6 +69,13 @@ func (m *Model) setLogs() {
 		return
 	}
 
+	// When not following, the pane is paused: keep the frozen lines so reading
+	// history isn't disturbed by incoming deltas (the resize above still re-wraps
+	// them). Re-following (f / G / selection change) rebuilds from the newest logs.
+	if !m.log.follow {
+		return
+	}
+
 	// Assemble the logical lines (combined stream or single resource), apply the
 	// text filter, and hand them to the windowed renderer — which wraps and paints
 	// only the visible rows. Assembly is O(buffer) but bounded by the segment cap;

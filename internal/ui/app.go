@@ -327,10 +327,9 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "f":
+		m.log.follow = !m.log.follow
 		if m.log.follow {
-			m.log.follow = false
-		} else {
-			m.log.gotoBottom()
+			m.setLogs() // resume: rebuild from the newest logs and pin to the bottom
 		}
 		return m, nil
 	case "L":
@@ -406,7 +405,8 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "G":
 		if m.focus == focusLogs {
-			m.log.gotoBottom()
+			m.log.follow = true
+			m.setLogs() // jump to the newest logs and resume following
 		}
 		return m, nil
 	}

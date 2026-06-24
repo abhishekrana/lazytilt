@@ -145,6 +145,47 @@ func TestScrollPositionSurvivesDelta(t *testing.T) {
 	}
 }
 
+// Follow off pauses the pane (a delta doesn't change what's shown); toggling
+// follow back on resumes and jumps to the newest logs.
+func TestFollowPauseAndResume(t *testing.T) {
+	apiView := func(n int) *tilt.View {
+		segs := make([]tilt.LogSegment, n)
+		for i := range segs {
+			segs[i] = tilt.LogSegment{SpanID: "s:api", Text: fmt.Sprintf("api line %d\n", i), Level: "INFO"}
+		}
+		return &tilt.View{
+			UIResources: []tilt.UIResource{e2eRes("api", "backend")},
+			LogList:     tilt.LogList{Spans: map[string]tilt.LogSpan{"s:api": {ManifestName: "api"}}, Segments: segs},
+		}
+	}
+	pressF := func(m Model) Model { return step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("f")}) }
+
+	m := drive(t, apiView(100))
+	m.selectByName("api")
+	m.log.follow = true
+	m.setLogs()
+	m.focus = focusLogs
+
+	// Pause.
+	m = pressF(m)
+	if m.log.follow || !strings.Contains(m.View(), "follow off") {
+		t.Fatalf("pressing f should turn follow off (label + state):\n%s", m.View())
+	}
+	// A delta while paused must not change the shown content.
+	m = step(m, viewMsg{port: 10350, view: apiView(130)})
+	if strings.Contains(m.View(), "api line 129") {
+		t.Fatalf("a delta while paused should not show new lines:\n%s", m.View())
+	}
+	// Resume: follow on, jumps to the newest lines from the latest view.
+	m = pressF(m)
+	if !m.log.follow || !strings.Contains(m.View(), "follow on") {
+		t.Fatalf("pressing f again should turn follow on:\n%s", m.View())
+	}
+	if !strings.Contains(m.View(), "api line 129") {
+		t.Fatalf("resuming follow should jump to the newest logs:\n%s", m.View())
+	}
+}
+
 // The combined "All Resources" view (selection row 0) must also render CRLF lines.
 func TestCRLFLogsRenderInCombinedView(t *testing.T) {
 	view := &tilt.View{

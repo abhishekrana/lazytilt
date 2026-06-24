@@ -61,7 +61,7 @@ func TestLogViewScrollUpDisablesFollowAndShowsEarlier(t *testing.T) {
 	}
 }
 
-func TestLogViewGotoTopBottom(t *testing.T) {
+func TestLogViewGotoTopAndFollow(t *testing.T) {
 	v := &logView{follow: true}
 	v.resize(20, 5)
 	v.setLines(mkLines(100))
@@ -73,12 +73,11 @@ func TestLogViewGotoTopBottom(t *testing.T) {
 	if out := v.View(); !strings.Contains(out, "line 0") || strings.Contains(out, "line 99") {
 		t.Fatalf("gotoTop should show the head:\n%s", out)
 	}
-	v.gotoBottom()
-	if !v.follow {
-		t.Fatal("gotoBottom must enable follow")
-	}
+	// Re-following pins back to the tail.
+	v.follow = true
+	v.clamp()
 	if out := v.View(); !strings.Contains(out, "line 99") {
-		t.Fatalf("gotoBottom should show the tail:\n%s", out)
+		t.Fatalf("following should pin to the tail:\n%s", out)
 	}
 }
 
@@ -138,5 +137,5 @@ func TestLogViewEmpty(t *testing.T) {
 	v.scrollUp(5) // must not panic
 	v.scrollDown(5)
 	v.gotoTop()
-	v.gotoBottom()
+	v.clamp()
 }

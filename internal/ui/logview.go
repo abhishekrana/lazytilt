@@ -60,11 +60,6 @@ func (v *logView) gotoTop() {
 	v.top = pos{}
 }
 
-func (v *logView) gotoBottom() {
-	v.follow = true
-	v.clamp() // pins top to the last page
-}
-
 func (v *logView) scrollUp(n int) {
 	v.follow = false
 	for ; n > 0; n-- {
