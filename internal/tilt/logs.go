@@ -1,6 +1,9 @@
 package tilt
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 // ManifestOf resolves a segment's span to its owning manifest name. The empty
 // string denotes global (non-resource) output.
@@ -37,10 +40,14 @@ func (l *LogList) AllLines() []LogLine {
 	type pending struct {
 		b     strings.Builder
 		level string
+		last  int // most recent segment index appended to this span's buffer
+	}
+	type tagged struct {
+		line LogLine
+		idx  int // segment index this line completed (or was last written) at
 	}
 	buf := map[string]*pending{}
-	var order []string
-	var out []LogLine
+	var lines []tagged
 
 	for i := range l.Segments {
 		s := l.Segments[i]
@@ -48,26 +55,40 @@ func (l *LogList) AllLines() []LogLine {
 		if !ok {
 			p = &pending{}
 			buf[s.SpanID] = p
-			order = append(order, s.SpanID)
 		}
 		p.level = s.Level
 		text := s.Text
 		for {
 			j := strings.IndexByte(text, '\n')
 			if j < 0 {
-				p.b.WriteString(text)
+				if text != "" {
+					p.b.WriteString(text)
+					p.last = i
+				}
 				break
 			}
 			p.b.WriteString(text[:j])
-			out = append(out, LogLine{Manifest: l.ManifestOf(s.SpanID), Level: s.Level, Text: p.b.String()})
+			lines = append(lines, tagged{LogLine{Manifest: l.ManifestOf(s.SpanID), Level: s.Level, Text: p.b.String()}, i})
 			p.b.Reset()
 			text = text[j+1:]
 		}
 	}
-	for _, span := range order {
-		if p := buf[span]; p.b.Len() > 0 {
-			out = append(out, LogLine{Manifest: l.ManifestOf(span), Level: p.level, Text: p.b.String()})
+	// Emit each span's leftover partial (a line with no trailing newline) at the
+	// segment where it was last written, so a resource that ended mid-line — e.g. a
+	// build that printed "failed: exit status 1" with no newline — stays in
+	// chronological order instead of being pinned below newer output from others.
+	for span, p := range buf {
+		if p.b.Len() > 0 {
+			lines = append(lines, tagged{LogLine{Manifest: l.ManifestOf(span), Level: p.level, Text: p.b.String()}, p.last})
 		}
+	}
+	// Stable sort by segment index. Complete lines were appended in index order, so
+	// their relative order is preserved; partials slot in at their last-write index.
+	// Indices are unique per line (one span per segment), so ordering is deterministic.
+	sort.SliceStable(lines, func(a, b int) bool { return lines[a].idx < lines[b].idx })
+	out := make([]LogLine, len(lines))
+	for i := range lines {
+		out[i] = lines[i].line
 	}
 	return out
 }
