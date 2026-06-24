@@ -87,6 +87,34 @@ func TestCRLFResourceLogsRender(t *testing.T) {
 	}
 }
 
+// New logs must keep rendering even when the total segment count is unchanged.
+// Once the accumulator's history cap is reached the count stays constant while
+// content rolls forward; a count-based render guard froze the pane (no scrolling).
+func TestLogPaneUpdatesWhenSegmentCountUnchanged(t *testing.T) {
+	mkView := func(newest string) *tilt.View {
+		return &tilt.View{
+			UIResources: []tilt.UIResource{e2eRes("api", "backend")},
+			LogList: tilt.LogList{
+				Spans: map[string]tilt.LogSpan{"s:api": {ManifestName: "api"}},
+				Segments: []tilt.LogSegment{ // fixed count (2), content rolls forward
+					{SpanID: "s:api", Text: "older line\n", Level: "INFO"},
+					{SpanID: "s:api", Text: newest + "\n", Level: "INFO"},
+				},
+			},
+		}
+	}
+	m := drive(t, mkView("first newest")) // lands in the instance, All Resources selected
+	if frame := m.View(); !strings.Contains(frame, "first newest") {
+		t.Fatalf("setup: first delta did not render:\n%s", frame)
+	}
+
+	// Second delta: SAME segment count, newer content (post-cap steady state).
+	m = step(m, viewMsg{port: 10350, view: mkView("second newest")})
+	if frame := m.View(); !strings.Contains(frame, "second newest") {
+		t.Fatalf("log pane froze on a same-count delta (no scrolling):\n%s", frame)
+	}
+}
+
 // The combined "All Resources" view (selection row 0) must also render CRLF lines.
 func TestCRLFLogsRenderInCombinedView(t *testing.T) {
 	view := &tilt.View{

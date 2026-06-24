@@ -53,9 +53,6 @@ func (m *Model) setLogs() {
 	if m.vp.Width <= 0 {
 		return
 	}
-	if m.view != nil {
-		m.renderedSegs = len(m.view.LogList.Segments)
-	}
 	r, ok := m.selectedResource()
 
 	// Size the viewport around the always-on detail strip: header + controls +

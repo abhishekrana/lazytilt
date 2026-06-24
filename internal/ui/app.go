@@ -71,10 +71,6 @@ type Model struct {
 	follow bool
 	level  logLevel
 
-	// renderedSegs is the active view's log-segment count at the last setLogs, so
-	// a status-only delta (segment count unchanged) can skip the full re-assembly.
-	renderedSegs int
-
 	mode              inputMode
 	typing            string
 	logFilter         string
@@ -194,13 +190,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.loadErr = nil
 			m.view = msg.view
 			m.clampSelection()
-			// Only re-assemble the log viewport when the log pane is visible and the
-			// log actually grew. Status-only deltas (and every delta while on the
-			// overview screen) skip the full O(total-logs) rebuild — this is what
-			// keeps idle CPU near zero on chatty stacks.
-			if !m.overview && len(m.view.LogList.Segments) != m.renderedSegs {
-				m.setLogs()
-			}
+			// Re-render on every delta for the active instance. setLogs self-guards
+			// while the overview is up. We must NOT gate on segment count: once the
+			// accumulator's history cap is reached the count is constant even as logs
+			// roll forward, so gating there froze the pane. The cap keeps each
+			// re-render O(maxLogSegments), so this stays cheap.
+			m.setLogs()
 		}
 		return m, listenCmd(m.events)
 
