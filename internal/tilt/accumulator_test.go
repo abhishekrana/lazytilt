@@ -1,9 +1,19 @@
 package tilt
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
+
+// mkSegs builds n generic, newline-terminated segments for one span.
+func mkSegs(span string, n int) []LogSegment {
+	out := make([]LogSegment, n)
+	for i := range out {
+		out[i] = LogSegment{SpanID: span, Text: fmt.Sprintf("line %d\n", i)}
+	}
+	return out
+}
 
 // res builds a UIResource with a name, sidebar order, and update status.
 func res(name string, order int, updateStatus string) UIResource {
@@ -172,5 +182,63 @@ func TestSnapshotIsImmutable(t *testing.T) {
 	a.Apply(&View{LogList: LogList{Segments: []LogSegment{seg("s1", "b\n")}, FromCheckpoint: 1, ToCheckpoint: 2}})
 	if got := len(snap.LogList.Segments); got != 1 {
 		t.Fatalf("earlier snapshot mutated by later delta: got %d segments, want 1", got)
+	}
+}
+
+// The retained log buffer is capped to the most recent maxLogSegments, which
+// bounds memory and per-frame render cost; spans still resolve after trimming.
+func TestAccumulatorCapsRetainedSegments(t *testing.T) {
+	a := NewViewAccumulator()
+	over := maxLogSegments + 500
+	a.Apply(&View{
+		IsComplete: true,
+		LogList: LogList{
+			Spans:        map[string]LogSpan{"s1": {ManifestName: "api"}},
+			Segments:     mkSegs("s1", over),
+			ToCheckpoint: int32(over),
+		},
+	})
+	snap := a.Snapshot()
+	if got := len(snap.LogList.Segments); got != maxLogSegments {
+		t.Fatalf("segments not capped: got %d, want %d", got, maxLogSegments)
+	}
+	// The kept segments are the most recent ones.
+	if want, got := fmt.Sprintf("line %d\n", over-1), snap.LogList.Segments[maxLogSegments-1].Text; got != want {
+		t.Fatalf("did not keep the newest segments: last=%q want %q", got, want)
+	}
+	// Spans still resolve after the trim (the full spans map is always current).
+	if got := len(snap.LogList.SegmentsFor("api")); got != maxLogSegments {
+		t.Fatalf("SegmentsFor after cap: got %d, want %d", got, maxLogSegments)
+	}
+}
+
+// Trimming must not mutate a Snapshot taken before the trim (the shared-array
+// invariant): the trim copies into a fresh backing array.
+func TestAccumulatorTrimKeepsEarlierSnapshotIntact(t *testing.T) {
+	a := NewViewAccumulator()
+	a.Apply(&View{
+		IsComplete: true,
+		LogList: LogList{
+			Spans:        map[string]LogSpan{"s1": {ManifestName: "api"}},
+			Segments:     mkSegs("s1", maxLogSegments-1),
+			ToCheckpoint: int32(maxLogSegments - 1),
+		},
+	})
+	snap := a.Snapshot()
+	before := len(snap.LogList.Segments) // maxLogSegments-1
+
+	// Append enough to push past the cap and force a trim.
+	a.Apply(&View{LogList: LogList{
+		Spans:          map[string]LogSpan{"s1": {ManifestName: "api"}},
+		Segments:       mkSegs("s1", 100),
+		FromCheckpoint: int32(maxLogSegments - 1),
+		ToCheckpoint:   int32(maxLogSegments + 99),
+	}})
+
+	if got := len(a.Snapshot().LogList.Segments); got != maxLogSegments {
+		t.Fatalf("expected cap %d after trim, got %d", maxLogSegments, got)
+	}
+	if got := len(snap.LogList.Segments); got != before {
+		t.Fatalf("trim mutated an earlier snapshot: got %d, want %d", got, before)
 	}
 }

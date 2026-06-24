@@ -5,6 +5,14 @@ import (
 	"time"
 )
 
+// maxLogSegments bounds the per-instance log buffer the accumulator retains. It
+// caps memory (the stream is otherwise unbounded) and per-frame render cost:
+// everything downstream — AllLines/SegmentsFor, line wrapping, and the
+// viewport's O(total) SetContent — is then O(maxLogSegments), not O(all logs).
+// It is the single CPU<->scrollback knob: lower for less CPU, higher for deeper
+// history (~one segment per log line).
+const maxLogSegments = 3000
+
 // ViewAccumulator reconstructs a complete View from the incremental updates Tilt
 // streams over /ws/view. The first message of a connection is a full snapshot
 // (IsComplete); every later message carries only what changed: changed
@@ -77,6 +85,13 @@ func (a *ViewAccumulator) Apply(v *View) {
 	}
 	if ll.FromCheckpoint != -1 && len(ll.Segments) > 0 {
 		a.segments = append(a.segments, ll.Segments...)
+		if len(a.segments) > maxLogSegments {
+			// Keep the most recent maxLogSegments. Copy into a fresh array rather
+			// than reslicing: prior Snapshots share the old backing array and rely
+			// on it staying immutable, and the accumulator must keep appending
+			// without aliasing them. The copy is ~maxLogSegments small structs.
+			a.segments = append([]LogSegment(nil), a.segments[len(a.segments)-maxLogSegments:]...)
+		}
 	}
 }
 
