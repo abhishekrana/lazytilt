@@ -72,3 +72,9 @@ Tests render the model and assert on `View()`. For a real visual check, run the 
 Push a `v`-prefixed SemVer tag (pre-1.0, so `v0.x`) — `.github/workflows/release.yml` runs GoReleaser to cross-build
 linux/darwin archives and publish a GitHub Release. `ci.yml` runs vet/test/build on every push/PR. Never move a
 published tag; bump to the next patch. Check the embedded version with `lazytilt --version`.
+
+```sh
+task check                               # main must be green and pushed first
+git tag -a v0.2.0 -m "lazytilt v0.2.0"   # annotated SemVer tag
+git push origin v0.2.0                    # triggers release.yml
+```
