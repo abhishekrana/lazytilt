@@ -35,14 +35,16 @@ internal/tilt/          one Tilt instance: client + decode + actions (no UI)
 internal/discovery/     find `tilt up` processes -> []Instance; Linux /proc, macOS ps/lsof (discovery_<goos>.go)
 internal/ui/            Bubble Tea: app.go (model/Update/View), sidebar, logpane, overview, theme, messages
   hub.go                I/O owner: discovers instances + one /ws/view per instance -> viewMsg/instancesMsg on a channel
+  logview.go            windowed log renderer: wraps + paints only the visible rows (O(visible)/frame); owns scroll+follow
   overview.go           cross-instance ‹1› dashboard (landing screen) + top-bar health badges; esc/digit drills in
 ```
 
 Data flow: the `Hub` is the single I/O owner — it rediscovers instances every ~2s and holds one `/ws/view` websocket per
 instance. Tilt sends a full snapshot then incremental deltas; a `ViewAccumulator` folds each stream into a complete
-`*View` that the Hub pushes as `viewMsg`/`instancesMsg` onto a channel the model drains via `listenCmd`. The UI works
-only when something changes (and `setLogs` skips re-assembly while the overview is up or the log didn't grow), so idle
-CPU stays near zero. Actions shell out to the `tilt` CLI scoped by `--port`; the status change then streams back.
+`*View` that the Hub pushes as `viewMsg`/`instancesMsg` onto a channel the model drains via `listenCmd`. The UI only
+re-renders on a change, the log buffer is capped (`accumulator.go` `maxLogSegments`), and `logview.go` paints just the
+visible window — so CPU stays low whether idle or streaming a busy log. Actions shell out to the `tilt` CLI scoped by
+`--port`; the status change then streams back.
 
 ## Conventions & gotchas (important)
 

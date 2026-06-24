@@ -68,6 +68,7 @@ func (m Model) updateOverviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "1", "esc":
 		m.overview = false
+		m.log.follow = true
 		m.setLogs() // repaint the log pane we skipped while on the overview
 		return m, nil
 	case "?":
@@ -102,6 +103,7 @@ func (m Model) updateOverviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.overview = false
 		nm, cmd := m.gotoInstance(idx)
 		mm := nm.(Model)
+		mm.log.follow = true
 		mm.setLogs() // repaint even if idx is already the active instance (gotoInstance no-ops then)
 		return mm, cmd
 	}
@@ -124,6 +126,7 @@ func (m Model) openOverviewRow(r ovRow) (tea.Model, tea.Cmd) {
 		m.focus = focusLogs
 		m.selectByName(r.res.Name())
 	}
+	m.log.follow = true
 	m.setLogs()
 	return m, cmd
 }

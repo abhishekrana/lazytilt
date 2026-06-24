@@ -7,7 +7,6 @@ import (
 
 	"github.com/abhishekrana/lazytilt/internal/discovery"
 	"github.com/abhishekrana/lazytilt/internal/tilt"
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -67,9 +66,8 @@ type Model struct {
 	selected int
 	focus    focusArea
 
-	vp     viewport.Model
-	follow bool
-	level  logLevel
+	log   logView // windowed log renderer (owns scroll position + follow)
+	level logLevel
 
 	mode              inputMode
 	typing            string
@@ -90,14 +88,12 @@ type Model struct {
 // discovery finds nothing; themeName selects the palette (empty = default).
 func New(token, host string, port int, themeName string) Model {
 	th := resolveTheme(themeName)
-	vp := viewport.New(80, 20)
 	return Model{
 		token:        token,
 		fallbackHost: host,
 		fallbackPort: port,
-		follow:       true,
+		log:          logView{follow: true},
 		level:        levelAll,
-		vp:           vp,
 		focus:        focusSidebar,
 		theme:        th,
 		views:        map[int]*tilt.View{},
@@ -160,8 +156,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.vp.Width = max(m.width-sidebarWidth-1, 10)
-		m.setLogs() // setLogs owns vp.Height (it varies with the detail strip)
+		m.setLogs() // setLogs owns the log view's width/height
 		return m, nil
 
 	case tea.KeyMsg:
@@ -258,6 +253,7 @@ func (m Model) handleInstances(msg instancesMsg) Model {
 		m.loadErr = m.viewErrs[port]
 		m.selected = 0
 		m.clampSelection()
+		m.log.follow = true // new instance: jump to its newest logs
 		m.setLogs()
 	}
 	return m
@@ -331,15 +327,20 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "f":
-		m.follow = !m.follow
-		m.setLogs()
+		if m.log.follow {
+			m.log.follow = false
+		} else {
+			m.log.gotoBottom()
+		}
 		return m, nil
 	case "L":
 		m.level = (m.level + 1) % 3
+		m.log.follow = true
 		m.setLogs()
 		return m, nil
 	case "c":
 		m.logFilter = ""
+		m.log.follow = true
 		m.setLogs()
 		return m, nil
 	case "o":
@@ -367,28 +368,47 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "up", "k":
 		if m.focus == focusSidebar {
 			m.moveSelection(-1)
-			return m, nil
+		} else {
+			m.log.scrollUp(1)
 		}
+		return m, nil
 	case "down", "j":
 		if m.focus == focusSidebar {
 			m.moveSelection(1)
-			return m, nil
+		} else {
+			m.log.scrollDown(1)
 		}
+		return m, nil
+	case "pgup", "b":
+		if m.focus == focusLogs {
+			m.log.scrollUp(m.log.height)
+		}
+		return m, nil
+	case "pgdown", " ":
+		if m.focus == focusLogs {
+			m.log.scrollDown(m.log.height)
+		}
+		return m, nil
+	case "ctrl+u":
+		if m.focus == focusLogs {
+			m.log.scrollUp(m.log.height / 2)
+		}
+		return m, nil
+	case "ctrl+d":
+		if m.focus == focusLogs {
+			m.log.scrollDown(m.log.height / 2)
+		}
+		return m, nil
 	case "g":
 		if m.focus == focusLogs {
-			m.vp.GotoTop()
-			return m, nil
+			m.log.gotoTop()
 		}
+		return m, nil
 	case "G":
 		if m.focus == focusLogs {
-			m.vp.GotoBottom()
-			return m, nil
+			m.log.gotoBottom()
 		}
-	}
-	if m.focus == focusLogs {
-		var cmd tea.Cmd
-		m.vp, cmd = m.vp.Update(msg)
-		return m, cmd
+		return m, nil
 	}
 	return m, nil
 }
@@ -419,6 +439,7 @@ func (m Model) updateFilterInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m *Model) applyTyping() {
 	if m.mode == modeLogFilter {
 		m.logFilter = m.typing
+		m.log.follow = true // jump to the newest matching lines as the filter changes
 		m.setLogs()
 	}
 }
@@ -474,6 +495,7 @@ func (m Model) gotoInstance(idx int) (tea.Model, tea.Cmd) {
 	m.selected = 0
 	m.statusMsg = ""
 	m.clampSelection()
+	m.log.follow = true // new instance: jump to its newest logs
 	m.setLogs()
 	return m, nil
 }

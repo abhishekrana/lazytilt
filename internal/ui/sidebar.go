@@ -130,6 +130,7 @@ func (m *Model) clampSelection() {
 func (m *Model) moveSelection(d int) {
 	m.selected += d
 	m.clampSelection()
+	m.log.follow = true // new selection: show its newest logs
 	m.setLogs()
 }
 

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -112,6 +113,35 @@ func TestLogPaneUpdatesWhenSegmentCountUnchanged(t *testing.T) {
 	m = step(m, viewMsg{port: 10350, view: mkView("second newest")})
 	if frame := m.View(); !strings.Contains(frame, "second newest") {
 		t.Fatalf("log pane froze on a same-count delta (no scrolling):\n%s", frame)
+	}
+}
+
+// Scrolling up to read history must survive an incoming delta on the same
+// selection — a log delta must not yank the view back to the bottom.
+func TestScrollPositionSurvivesDelta(t *testing.T) {
+	apiView := func(n int) *tilt.View {
+		segs := make([]tilt.LogSegment, n)
+		for i := range segs {
+			segs[i] = tilt.LogSegment{SpanID: "s:api", Text: fmt.Sprintf("api line %d\n", i), Level: "INFO"}
+		}
+		return &tilt.View{
+			UIResources: []tilt.UIResource{e2eRes("api", "backend")},
+			LogList:     tilt.LogList{Spans: map[string]tilt.LogSpan{"s:api": {ManifestName: "api"}}, Segments: segs},
+		}
+	}
+	m := drive(t, apiView(50))
+	m.selectByName("api")
+	m.log.follow = true
+	m.setLogs()
+	m.log.scrollUp(20) // read history — disables follow
+
+	if f := m.View(); strings.Contains(f, "api line 49") {
+		t.Fatalf("after scroll-up the newest line should be off-screen:\n%s", f)
+	}
+	// A delta on the same selection must preserve the scroll position.
+	m = step(m, viewMsg{port: 10350, view: apiView(51)})
+	if f := m.View(); strings.Contains(f, "api line 50") {
+		t.Fatalf("an incoming delta yanked the scroll position to the bottom:\n%s", f)
 	}
 }
 
