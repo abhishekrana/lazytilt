@@ -242,3 +242,25 @@ func TestAccumulatorTrimKeepsEarlierSnapshotIntact(t *testing.T) {
 		t.Fatalf("trim mutated an earlier snapshot: got %d, want %d", got, before)
 	}
 }
+
+// Eviction is manifest-weighted: a noisy resource flooding past the cap must not
+// evict a quiet resource's (older) logs entirely.
+func TestAccumulatorCapPreservesQuietManifest(t *testing.T) {
+	a := NewViewAccumulator()
+	segs := append(mkSegs("cam", 10), mkSegs("node", maxLogSegments+1000)...) // quiet then noisy
+	a.Apply(&View{
+		IsComplete: true,
+		LogList: LogList{
+			Spans:        map[string]LogSpan{"cam": {ManifestName: "cam"}, "node": {ManifestName: "node"}},
+			Segments:     segs,
+			ToCheckpoint: int32(len(segs)),
+		},
+	})
+	snap := a.Snapshot()
+	if got := len(snap.LogList.Segments); got > maxLogSegments {
+		t.Fatalf("total not capped: got %d, want <= %d", got, maxLogSegments)
+	}
+	if got := len(snap.LogList.SegmentsFor("cam")); got != 10 {
+		t.Fatalf("quiet manifest evicted by the noisy one: cam segments = %d, want 10", got)
+	}
+}

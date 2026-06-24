@@ -7,10 +7,9 @@ import (
 
 // maxLogSegments bounds the per-instance log buffer the accumulator retains. It
 // caps memory (the stream is otherwise unbounded) and per-frame render cost:
-// everything downstream — AllLines/SegmentsFor, line wrapping, and the
-// viewport's O(total) SetContent — is then O(maxLogSegments), not O(all logs).
-// It is the single CPU<->scrollback knob: lower for less CPU, higher for deeper
-// history (~one segment per log line).
+// downstream assembly (AllLines/SegmentsFor) is then O(maxLogSegments), not
+// O(all logs). Eviction is manifest-weighted (see capSegments), so it's also the
+// rough per-resource scrollback depth. Lower for less CPU, higher for more history.
 const maxLogSegments = 3000
 
 // ViewAccumulator reconstructs a complete View from the incremental updates Tilt
@@ -85,14 +84,54 @@ func (a *ViewAccumulator) Apply(v *View) {
 	}
 	if ll.FromCheckpoint != -1 && len(ll.Segments) > 0 {
 		a.segments = append(a.segments, ll.Segments...)
-		if len(a.segments) > maxLogSegments {
-			// Keep the most recent maxLogSegments. Copy into a fresh array rather
-			// than reslicing: prior Snapshots share the old backing array and rely
-			// on it staying immutable, and the accumulator must keep appending
-			// without aliasing them. The copy is ~maxLogSegments small structs.
-			a.segments = append([]LogSegment(nil), a.segments[len(a.segments)-maxLogSegments:]...)
-		}
+		a.capSegments()
 	}
+}
+
+// capSegments trims the buffer to maxLogSegments, evicting the OLDEST segments of
+// the HEAVIEST manifests first (à la Tilt's own log store) so a chatty resource
+// can't push a quiet one's logs out entirely. It returns a fresh slice: prior
+// Snapshots share the old backing array and rely on it staying immutable.
+func (a *ViewAccumulator) capSegments() {
+	if len(a.segments) <= maxLogSegments {
+		return
+	}
+	manifest := func(s LogSegment) string { return a.spans[s.SpanID].ManifestName }
+
+	count := map[string]int{}
+	for _, s := range a.segments {
+		count[manifest(s)]++
+	}
+	// Decide how many of each manifest's oldest segments to drop: repeatedly halve
+	// the current heaviest manifest until the total is within the cap.
+	drop := map[string]int{}
+	total := len(a.segments)
+	for total > maxLogSegments {
+		heaviest, hc := "", 0
+		for m, c := range count {
+			if c > hc || (c == hc && m < heaviest) {
+				heaviest, hc = m, c
+			}
+		}
+		n := hc - hc/2 // cut ~half of the heaviest
+		if total-n < maxLogSegments {
+			n = total - maxLogSegments
+		}
+		drop[heaviest] += n
+		count[heaviest] -= n
+		total -= n
+	}
+	// Rebuild into a fresh slice, skipping each manifest's oldest drop[m] segments
+	// while preserving global order.
+	out := make([]LogSegment, 0, maxLogSegments)
+	for _, s := range a.segments {
+		if m := manifest(s); drop[m] > 0 {
+			drop[m]--
+			continue
+		}
+		out = append(out, s)
+	}
+	a.segments = out
 }
 
 // Snapshot returns the fully-merged View. Resources are sorted by status.order
