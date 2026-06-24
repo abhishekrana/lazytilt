@@ -44,7 +44,6 @@ type Model struct {
 
 	instances []discovery.Instance
 	active    int
-	tickN     int
 
 	view    *tilt.View
 	loadErr error
@@ -163,11 +162,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateKeys(msg)
 
 	case tickMsg:
-		m.tickN++
-		cmds := append([]tea.Cmd{tickCmd()}, m.fetchAllCmds()...)
-		if m.tickN%5 == 0 {
-			cmds = append(cmds, discoverCmd())
-		}
+		// Re-discover on every tick: a /proc scan is only a few ms, and polling it
+		// each second means a freshly-started `tilt up` (or one that restarted on a
+		// new PID) shows up within ~1s instead of lagging up to ~5s behind.
+		cmds := append([]tea.Cmd{tickCmd(), discoverCmd()}, m.fetchAllCmds()...)
 		return m, tea.Batch(cmds...)
 
 	case viewMsg:
