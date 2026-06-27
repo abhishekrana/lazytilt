@@ -4,6 +4,7 @@ package discovery
 
 import (
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -27,27 +28,35 @@ func scanProcesses() []Instance {
 	return out
 }
 
-// inspect returns an Instance if pid is a `tilt up` process.
+// inspect returns an Instance if pid is a live `tilt up` or a launcher bringing a
+// tilt stack up (a launcher only counts when its dir holds a Tiltfile).
 func inspect(pid int) (Instance, bool) {
 	args, err := readArgs(pid)
-	if err != nil || !isTiltUp(args) {
+	if err != nil {
 		return Instance{}, false
 	}
+	cwd, _ := os.Readlink("/proc/" + strconv.Itoa(pid) + "/cwd")
 
-	port := portFromArgs(args)
-	if port == 0 {
-		port = portFromEnv(pid)
+	if isTiltUp(args) {
+		port := portFromArgs(args)
+		if port == 0 {
+			port = portFromEnv(pid)
+		}
+		if port == 0 {
+			port = 10350 // Tilt's default
+		}
+		return Instance{Host: "localhost", Port: port, Label: labelFromPath(cwd), Dir: cwd, PID: pid}, true
 	}
-	if port == 0 {
-		port = 10350 // Tilt's default
+	if isTiltLauncher(args) && cwd != "" && hasTiltfile(cwd) {
+		return Instance{Host: "localhost", Label: labelFromPath(cwd), Dir: cwd, PID: pid, Starting: true}, true
 	}
+	return Instance{}, false
+}
 
-	label := ""
-	if cwd, err := os.Readlink("/proc/" + strconv.Itoa(pid) + "/cwd"); err == nil {
-		label = labelFromPath(cwd)
-	}
-
-	return Instance{Host: "localhost", Port: port, Label: label, PID: pid}, true
+// hasTiltfile reports whether dir contains a regular Tiltfile.
+func hasTiltfile(dir string) bool {
+	fi, err := os.Stat(filepath.Join(dir, "Tiltfile"))
+	return err == nil && !fi.IsDir()
 }
 
 // portFromEnv reads TILT_PORT from /proc/<pid>/environ.

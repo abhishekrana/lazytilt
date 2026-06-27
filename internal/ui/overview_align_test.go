@@ -55,15 +55,15 @@ func TestOverviewColumnsAlign(t *testing.T) {
 	m := New("", "localhost", 10350, "")
 	m = step(m, tea.WindowSizeMsg{Width: 120, Height: 30})
 	m = step(m, instancesMsg{instances: []discovery.Instance{
-		{Host: "localhost", Port: 10350, Label: "cloud"},
-		{Host: "localhost", Port: 10360, Label: "data-farm"},
-		{Host: "localhost", Port: 10370, Label: "onprem"},
-		{Host: "localhost", Port: 10390, Label: "benchmarking"},
+		{Host: "localhost", Port: 10350, Label: "app-one"},
+		{Host: "localhost", Port: 10360, Label: "app-two"},
+		{Host: "localhost", Port: 10370, Label: "app-three"},
+		{Host: "localhost", Port: 10380, Label: "app-four"},
 	}})
 	m = step(m, viewMsg{port: 10350, view: mkView(11, 11, "", "")})
 	m = step(m, viewMsg{port: 10360, view: mkView(19, 20, "", "")})
-	m = step(m, viewMsg{port: 10370, view: mkView(11, 12, "prometheus-federated", "compose")})
-	m = step(m, viewMsg{port: 10390, view: mkView(2, 3, "", "")})
+	m = step(m, viewMsg{port: 10370, view: mkView(11, 12, "worker", "compose")})
+	m = step(m, viewMsg{port: 10380, view: mkView(2, 3, "", "")})
 
 	lines := strings.Split(ansi.Strip(m.View()), "\n")
 
@@ -98,7 +98,7 @@ func TestOverviewColumnsAlign(t *testing.T) {
 
 	// The failing resource's detail aligns under the port column.
 	for _, ln := range lines {
-		if strings.Contains(ln, "prometheus-federated") {
+		if strings.Contains(ln, "worker") {
 			if c := displayCol(ln, "compose"); c != portCol {
 				t.Errorf("resource detail at col %d, want %d (under the port column)", c, portCol)
 			}
@@ -113,7 +113,7 @@ func TestOverviewLongNameNotTruncated(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	defer lipgloss.SetColorProfile(termenv.Ascii)
 
-	const longName = "dual-franka-robot-state-publisher" // 33 cells, well past ovNameW
+	const longName = "really-long-background-worker-name" // well past the ovNameW floor
 	v := &tilt.View{UIResources: []tilt.UIResource{{
 		Metadata: tilt.ObjectMeta{Name: longName},
 		Status: tilt.UIResourceStatus{
@@ -125,7 +125,7 @@ func TestOverviewLongNameNotTruncated(t *testing.T) {
 	m := New("", "localhost", 10350, "")
 	m = step(m, tea.WindowSizeMsg{Width: 160, Height: 30})
 	m = step(m, instancesMsg{instances: []discovery.Instance{
-		{Host: "localhost", Port: 10350, Label: "data-farm"},
+		{Host: "localhost", Port: 10350, Label: "app-one"},
 	}})
 	m = step(m, viewMsg{port: 10350, view: v})
 

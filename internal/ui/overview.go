@@ -92,13 +92,17 @@ func (m Model) updateOverviewKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		rows := m.overviewRows()
 		if m.overviewSel >= 0 && m.overviewSel < len(rows) {
-			return m.openOverviewRow(rows[m.overviewSel])
+			row := rows[m.overviewSel]
+			if m.instances[row.inst].Starting {
+				return m, nil // still starting: nothing to open yet
+			}
+			return m.openOverviewRow(row)
 		}
 		return m, nil
 	case "2", "3", "4", "5", "6", "7", "8", "9":
 		idx := int(msg.String()[0] - '2')
-		if idx < 0 || idx >= len(m.instances) {
-			return m, nil // no such instance: stay in the overview
+		if idx < 0 || idx >= len(m.instances) || m.instances[idx].Starting {
+			return m, nil // no such instance (or still starting): stay in the overview
 		}
 		m.overview = false
 		nm, cmd := m.gotoInstance(idx)
@@ -265,14 +269,23 @@ func (m Model) ovNameWidth(rows []ovRow) int {
 
 func (m Model) renderOvHeader(i, nameW int, sel bool) string {
 	in := m.instances[i]
-	var c tilt.StatusCounts
-	if v := m.views[in.Port]; v != nil {
-		c = v.StatusCounts()
-	}
 	// Instances are numbered ‹2›, ‹3›, … to match the top bar and the digit keys
 	// that jump to them (‹1› is the overview itself).
 	tag := m.theme.accent().Render(fmt.Sprintf("‹%d›", i+2))
 	name := m.theme.header().Render(in.Label)
+	// A still-starting stack has no port or health yet: its launcher is bringing it
+	// up and `tilt up` hasn't bound a port. Show that it's on its way.
+	if in.Starting {
+		stat := m.theme.muted().Render("starting")
+		glyph := lipgloss.NewStyle().Foreground(m.theme.Pending).Render("◌")
+		return ovMarker(m.theme, sel) +
+			cell(tag, ovTagW) + cell(name, nameW) + cell(stat, ovPortW) +
+			cell(glyph, ovBadgeW) + m.theme.muted().Render("waiting for tilt up")
+	}
+	var c tilt.StatusCounts
+	if v := m.views[in.Port]; v != nil {
+		c = v.StatusCounts()
+	}
 	port := m.theme.muted().Render(fmt.Sprintf(":%d", in.Port))
 	ok := lipgloss.NewStyle().Foreground(m.theme.OK).Render(fmt.Sprintf("✓%d/%d", c.OK, c.Total))
 	return ovMarker(m.theme, sel) +

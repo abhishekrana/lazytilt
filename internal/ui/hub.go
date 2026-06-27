@@ -74,6 +74,12 @@ func (h *Hub) reconcile(ctx context.Context) {
 
 	want := make(map[int]discovery.Instance, len(insts))
 	for _, in := range insts {
+		// A still-starting stack has no `tilt up` yet (port 0) — nothing to connect
+		// to. It rides along in instancesMsg so the overview can show it, but we open
+		// no websocket until its `tilt up` binds a port and discovery promotes it.
+		if in.Starting || in.Port == 0 {
+			continue
+		}
 		want[in.Port] = in
 	}
 	for port, in := range want {

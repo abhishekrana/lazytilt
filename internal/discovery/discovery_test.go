@@ -94,16 +94,95 @@ func TestParseTiltProcesses(t *testing.T) {
 		return 0
 	}
 
-	got := parseTiltProcesses(ps, cwd, env)
+	noTiltfile := func(string) bool { return false }
+	got := parseTiltProcesses(ps, cwd, env, noTiltfile)
 	if len(got) != 2 {
 		t.Fatalf("got %d instances, want 2: %+v", len(got), got)
 	}
 	// pid 101: port from args, label from cwd (k8s is generic -> alpha).
-	if got[0] != (Instance{Host: "localhost", Port: 10351, Label: "alpha", PID: 101}) {
+	if got[0] != (Instance{Host: "localhost", Port: 10351, Label: "alpha", Dir: "/home/me/alpha/k8s", PID: 101}) {
 		t.Errorf("instance 0 = %+v", got[0])
 	}
 	// pid 202: no port flag, so env(202) supplies 10360; label beta.
-	if got[1] != (Instance{Host: "localhost", Port: 10360, Label: "beta", PID: 202}) {
+	if got[1] != (Instance{Host: "localhost", Port: 10360, Label: "beta", Dir: "/home/me/beta", PID: 202}) {
 		t.Errorf("instance 1 = %+v", got[1])
+	}
+}
+
+func TestIsTiltLauncher(t *testing.T) {
+	yes := [][]string{
+		{"task", "up"},  // a task runner in a stack dir — any target counts
+		{"task", "dev"}, // an earlier setup phase is still the stack starting
+		{"make", "tilt-up"},
+		{"just", "up"},
+		{"./tilt.sh"}, // not a task runner, but references tilt
+		{"bash", "run-tilt.sh"},
+	}
+	no := [][]string{
+		{"tilt", "up", "--port", "10350"}, // the tilt binary itself (isTiltUp's job)
+		{"lazytilt"},                      // us
+		{"vim", "Tiltfile"},               // editing the file isn't launching
+		{"go", "build", "./..."},          // not a task runner, no tilt reference
+		{},                                // empty
+	}
+	for _, a := range yes {
+		if !isTiltLauncher(a) {
+			t.Errorf("isTiltLauncher(%v) = false, want true", a)
+		}
+	}
+	for _, a := range no {
+		if isTiltLauncher(a) {
+			t.Errorf("isTiltLauncher(%v) = true, want false", a)
+		}
+	}
+}
+
+// TestParseTiltProcessesStarting covers launcher detection: a task runner counts
+// as a still-starting stack only when its dir holds a Tiltfile.
+func TestParseTiltProcessesStarting(t *testing.T) {
+	ps := "  501 task up\n" + // launcher, dir has Tiltfile -> starting
+		"  502 task up\n" + // launcher, dir has no Tiltfile -> ignored
+		"  503 go build ./...\n" // not a launcher, even in a stack dir -> ignored
+	cwd := func(pid int) string {
+		return map[int]string{501: "/home/me/app-two", 502: "/home/me/elsewhere", 503: "/home/me/app-two"}[pid]
+	}
+	hasTiltfile := func(dir string) bool { return dir == "/home/me/app-two" }
+
+	got := parseTiltProcesses(ps, cwd, nil, hasTiltfile)
+	if len(got) != 1 {
+		t.Fatalf("got %d instances, want 1: %+v", len(got), got)
+	}
+	want := Instance{Host: "localhost", Label: "app-two", Dir: "/home/me/app-two", PID: 501, Starting: true}
+	if got[0] != want {
+		t.Errorf("starting instance = %+v, want %+v", got[0], want)
+	}
+}
+
+// TestMergeInstances covers the dedup: running instances sort by port first, a
+// launcher whose dir already has a live tilt is dropped, and duplicate launchers
+// for one dir collapse to a single still-starting row.
+func TestMergeInstances(t *testing.T) {
+	scanned := []Instance{
+		{Host: "localhost", Port: 10360, Label: "app-two", Dir: "/app-2", PID: 2},
+		{Host: "localhost", Port: 10350, Label: "app-one", Dir: "/app-1", PID: 1},
+		{Host: "localhost", Label: "app-one", Dir: "/app-1", PID: 3, Starting: true},   // dropped: /app-1 is live
+		{Host: "localhost", Label: "app-three", Dir: "/app-3", PID: 4, Starting: true}, // kept
+		{Host: "localhost", Label: "app-three", Dir: "/app-3", PID: 5, Starting: true}, // dup dir -> collapsed
+		{Host: "localhost", Label: "app-four", Dir: "/app-4", PID: 6, Starting: true},  // kept
+	}
+	got := mergeInstances(scanned)
+	if len(got) != 4 {
+		t.Fatalf("got %d instances, want 4: %+v", len(got), got)
+	}
+	// Running first, by port.
+	if got[0].Port != 10350 || got[1].Port != 10360 {
+		t.Errorf("running not sorted by port: %+v", got[:2])
+	}
+	// Then starting, by dir: /app-3 before /app-4.
+	if !got[2].Starting || got[2].Dir != "/app-3" {
+		t.Errorf("got[2] = %+v, want starting /app-3", got[2])
+	}
+	if !got[3].Starting || got[3].Dir != "/app-4" {
+		t.Errorf("got[3] = %+v, want starting /app-4", got[3])
 	}
 }

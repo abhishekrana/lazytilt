@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/abhishekrana/lazytilt/internal/discovery"
 	"github.com/abhishekrana/lazytilt/internal/tilt"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -160,6 +161,45 @@ func TestOverviewInstanceNumbering(t *testing.T) {
 	}
 	if m.currentPort() != 10360 {
 		t.Errorf("‹3› should land on app-two (:10360), got :%d", m.currentPort())
+	}
+}
+
+func TestOverviewShowsStartingStack(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(termenv.Ascii)
+
+	m := New("", "localhost", 10350, "")
+	m = step(m, tea.WindowSizeMsg{Width: 160, Height: 40})
+	m = step(m, instancesMsg{instances: []discovery.Instance{
+		{Host: "localhost", Port: 10350, Label: "app-one"},
+		{Host: "localhost", Label: "app-two", Dir: "/app-two", Starting: true}, // tilt up not bound yet
+	}})
+	// All-healthy running instance => no resource rows, so the overview is exactly
+	// two header rows: [0] app-one, [1] app-two (starting).
+	m = step(m, viewMsg{port: 10350, view: mustView(t, "view_compose.json")})
+
+	frame := ansi.Strip(m.View())
+	// The starting stack is listed (tagged ‹3›) and labelled, even with no port/health.
+	for _, want := range []string{"app-two", "starting", "waiting for tilt up", "2 instances"} {
+		if !strings.Contains(frame, want) {
+			t.Errorf("overview missing %q:\n%s", want, frame)
+		}
+	}
+	// It carries no port: a starting stack hasn't bound one.
+	if strings.Contains(frame, ":0") {
+		t.Errorf("a starting stack must not render a :0 port:\n%s", frame)
+	}
+
+	// Selecting it is a no-op: there's nothing to drill into until tilt binds a port.
+	m = step(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
+	if !m.overview {
+		t.Error("a still-starting instance digit should stay in the overview")
+	}
+	// Navigate to its row and press enter — also a no-op, stays on the overview.
+	m = step(m, tea.KeyMsg{Type: tea.KeyDown})
+	m = step(m, tea.KeyMsg{Type: tea.KeyEnter})
+	if !m.overview {
+		t.Error("opening a still-starting row should stay in the overview")
 	}
 }
 

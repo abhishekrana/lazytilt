@@ -3,19 +3,27 @@
 package discovery
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
 
-// scanProcesses finds `tilt up` processes on macOS, which has no /proc: it lists
-// processes with `ps`, then resolves each match's working directory with `lsof`.
+// scanProcesses finds tilt stacks on macOS, which has no /proc: it lists processes
+// with `ps`, then resolves each match's working directory with `lsof`.
 func scanProcesses() []Instance {
 	out, err := exec.Command("ps", "-axww", "-o", "pid=,args=").Output()
 	if err != nil {
 		return nil
 	}
-	return parseTiltProcesses(string(out), cwdOf, portFromEnv)
+	return parseTiltProcesses(string(out), cwdOf, portFromEnv, hasTiltfile)
+}
+
+// hasTiltfile reports whether dir contains a regular Tiltfile.
+func hasTiltfile(dir string) bool {
+	fi, err := os.Stat(filepath.Join(dir, "Tiltfile"))
+	return err == nil && !fi.IsDir()
 }
 
 // cwdOf returns a process's working directory via `lsof`, or "" if unavailable.

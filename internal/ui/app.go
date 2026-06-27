@@ -488,6 +488,9 @@ func (m Model) gotoInstance(idx int) (tea.Model, tea.Cmd) {
 	if idx < 0 || idx >= len(m.instances) || idx == m.active {
 		return m, nil
 	}
+	if m.instances[idx].Starting {
+		return m, nil // no `tilt up` yet — nothing to drill into until it binds a port
+	}
 	m.active = idx
 	port := m.currentPort()
 	m.view = m.views[port]
@@ -576,6 +579,9 @@ func (m Model) renderTopBar() string {
 			nameStyle = m.theme.header()
 		}
 		badge, bc := m.instanceBadge(in.Port)
+		if in.Starting {
+			badge, bc = "◌", m.theme.Pending // launcher up, tilt not bound yet
+		}
 		seg := nameStyle.Render(tag+" "+in.Label) + " " + lipgloss.NewStyle().Foreground(bc).Render(badge)
 		segs = append(segs, seg)
 	}
