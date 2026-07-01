@@ -35,6 +35,7 @@ func TestDetailStripSurfacesFetchedFields(t *testing.T) {
 			K8sResourceInfo: &tilt.K8sResourceInfo{PodName: "api-7f9b9c", PodStatus: "Running", PodRestarts: 2},
 			BuildHistory: []tilt.BuildTerminated{{
 				Error:      "dial tcp 127.0.0.1:5432: connection refused",
+				Warnings:   []string{"deprecated base image", "no health check defined"},
 				StartTime:  start,
 				FinishTime: start.Add(1200 * time.Millisecond),
 			}},
@@ -61,5 +62,10 @@ func TestDetailStripSurfacesFetchedFields(t *testing.T) {
 	// says what broke — the running pod's own logs otherwise bury it.
 	if !strings.Contains(frame, "connection refused") {
 		t.Error("last build error should appear in the detail strip")
+	}
+
+	// Build warnings are surfaced too, tagged with the count (2 here), first shown.
+	if !strings.Contains(frame, "warn 2") || !strings.Contains(frame, "deprecated base image") {
+		t.Error("build warnings should appear in the detail strip with a count")
 	}
 }

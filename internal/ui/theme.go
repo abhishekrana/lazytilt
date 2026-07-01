@@ -124,6 +124,7 @@ func (t Theme) StatusColor(s tilt.Status) lipgloss.Color {
 func (t Theme) muted() lipgloss.Style  { return lipgloss.NewStyle().Foreground(t.Muted) }
 func (t Theme) accent() lipgloss.Style { return lipgloss.NewStyle().Foreground(t.Accent) }
 func (t Theme) err() lipgloss.Style    { return lipgloss.NewStyle().Foreground(t.Err) }
+func (t Theme) warn() lipgloss.Style   { return lipgloss.NewStyle().Foreground(t.Pending) }
 func (t Theme) header() lipgloss.Style { return lipgloss.NewStyle().Foreground(t.Text).Bold(true) }
 
 // Region styles. We deliberately do NOT paint a background: filling the screen

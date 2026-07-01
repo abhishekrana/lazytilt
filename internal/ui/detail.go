@@ -13,8 +13,8 @@ import (
 // header and the logs. Each row appears only when it carries something, so a
 // healthy resource with no endpoints adds nothing and the logs keep their space.
 // Surfaces fields lazytilt already fetches but otherwise hides: build error,
-// workload kind, build duration, endpoints and labels. (Pod restarts already ride
-// along in the header's RuntimeLine, so they aren't repeated here.)
+// build warnings, workload kind, build duration, endpoints and labels. (Pod
+// restarts already ride along in the header's RuntimeLine, so they aren't repeated.)
 func (m Model) detailLines(r tilt.UIResource, w int) []string {
 	var lines []string
 
@@ -23,6 +23,18 @@ func (m Model) detailLines(r tilt.UIResource, w int) []string {
 	// so a ✕ resource says *what* broke, not just that it did.
 	if e := firstLine(r.LastError()); e != "" {
 		lines = append(lines, m.theme.err().Render("error ")+e)
+	}
+
+	// Warnings don't set the resource's error state, so a green resource can carry
+	// them — show the first, tagged with the count when there's more than one.
+	if w := r.LastWarnings(); len(w) > 0 {
+		if msg := firstLine(strings.Join(w, "\n")); msg != "" {
+			label := "warn "
+			if len(w) > 1 {
+				label = fmt.Sprintf("warn %d ", len(w))
+			}
+			lines = append(lines, m.theme.warn().Render(label)+msg)
+		}
 	}
 
 	if kinds := r.WorkloadKinds(); len(kinds) > 0 {

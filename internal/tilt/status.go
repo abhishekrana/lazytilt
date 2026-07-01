@@ -163,6 +163,15 @@ func (r *UIResource) LastError() string {
 	return ""
 }
 
+// LastWarnings returns the most recent build's warnings, if any. Tilt keeps them
+// out of the resource's error state, so a healthy resource can still carry them.
+func (r *UIResource) LastWarnings() []string {
+	if len(r.Status.BuildHistory) > 0 {
+		return r.Status.BuildHistory[0].Warnings
+	}
+	return nil
+}
+
 // LastBuildDuration returns how long the most recent build with valid
 // timestamps took, and whether one was found. Used by the detail view.
 func (r *UIResource) LastBuildDuration() (time.Duration, bool) {
