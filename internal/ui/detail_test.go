@@ -57,9 +57,9 @@ func TestDetailStripSurfacesFetchedFields(t *testing.T) {
 		}
 	}
 
-	// The last build error is intentionally not surfaced here — the header's
-	// status glyph flags the failure and the full text lives in the logs.
-	if strings.Contains(frame, "connection refused") {
-		t.Error("last error should not appear in the detail strip")
+	// A failing resource surfaces its build-error summary in the strip, so the ✕
+	// says what broke — the running pod's own logs otherwise bury it.
+	if !strings.Contains(frame, "connection refused") {
+		t.Error("last build error should appear in the detail strip")
 	}
 }
