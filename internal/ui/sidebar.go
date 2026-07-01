@@ -81,8 +81,36 @@ func (m Model) sidebarGroups() []sidebarGroup {
 	return groups
 }
 
+// sidebarRow is one selectable sidebar entry: a resource, or — when workload is
+// non-empty — one workload (deployment/statefulset) nested under that resource.
+// The synthetic "All Resources" row (selection index 0) is not represented here.
+type sidebarRow struct {
+	resource tilt.UIResource
+	workload string // "" = the resource itself; else a child workload
+}
+
+// selectableRows is the flat, ordered list of navigable sidebar entries below the
+// All-Resources row: each resource followed by its workloads (only when it bundles
+// more than one). Selection index i+1 maps to selectableRows()[i]; this must stay
+// in lockstep with renderSidebar's row order.
+func (m Model) selectableRows() []sidebarRow {
+	var out []sidebarRow
+	for _, g := range m.sidebarGroups() {
+		for _, r := range g.resources {
+			out = append(out, sidebarRow{resource: r})
+			if wl := r.Workloads(); len(wl) > 1 {
+				for _, w := range wl {
+					out = append(out, sidebarRow{resource: r, workload: w})
+				}
+			}
+		}
+	}
+	return out
+}
+
 // visible returns the resources in sidebar display order (grouped + alphabetical
-// when labeled, else Tilt order). Disabled resources are always included.
+// when labeled, else Tilt order), without the workload child rows. Selection
+// indexing uses selectableRows; this is for plain resource-list needs.
 func (m Model) visible() []tilt.UIResource {
 	var out []tilt.UIResource
 	for _, g := range m.sidebarGroups() {
@@ -92,27 +120,49 @@ func (m Model) visible() []tilt.UIResource {
 }
 
 // rowCount is the number of selectable sidebar rows: the All-Resources row plus
-// one per resource (0 before any view has loaded). Group headers are not counted
-// — they are not selectable.
+// every resource and workload row (0 before any view has loaded). Group headers
+// are not counted — they are not selectable.
 func (m Model) rowCount() int {
 	if m.view == nil {
 		return 0
 	}
-	return len(m.visible()) + 1
+	return len(m.selectableRows()) + 1
 }
 
 // onAllLogs reports whether the "All Resources" row (index 0) is selected.
 func (m Model) onAllLogs() bool { return m.view != nil && m.selected == 0 }
 
-// selectedResource returns the selected resource, or ok=false when the
-// "All Resources" row (or nothing) is selected.
-func (m Model) selectedResource() (tilt.UIResource, bool) {
-	vis := m.visible()
+// selectedRow returns the selected sidebar row (resource or workload), or
+// ok=false on the "All Resources" row (or nothing).
+func (m Model) selectedRow() (sidebarRow, bool) {
+	rows := m.selectableRows()
 	i := m.selected - 1
-	if i < 0 || i >= len(vis) {
+	if i < 0 || i >= len(rows) {
+		return sidebarRow{}, false
+	}
+	return rows[i], true
+}
+
+// selectedResource returns the resource owning the selected row — the parent
+// release when a workload child is selected — or ok=false on "All Resources".
+// Resource actions (trigger/enable/disable) therefore target the parent, which is
+// the only granularity the tilt CLI offers.
+func (m Model) selectedResource() (tilt.UIResource, bool) {
+	row, ok := m.selectedRow()
+	if !ok {
 		return tilt.UIResource{}, false
 	}
-	return vis[i], true
+	return row.resource, true
+}
+
+// selectedWorkload returns the (manifest, workload) of the selected workload
+// child row, or ok=false when a plain resource or "All Resources" is selected.
+func (m Model) selectedWorkload() (manifest, workload string, ok bool) {
+	row, rok := m.selectedRow()
+	if !rok || row.workload == "" {
+		return "", "", false
+	}
+	return row.resource.Name(), row.workload, true
 }
 
 func (m *Model) clampSelection() {
@@ -140,17 +190,28 @@ func (m Model) renderSidebar(h int) string {
 		lines = append(lines, m.allRow())
 	}
 
-	idx := 0 // running index into visible(); selection index is idx+1
+	sel := 0 // running selection index; 0 (the All row) was emitted above
 	for _, g := range m.sidebarGroups() {
 		if g.header != "" {
 			lines = append(lines, "", m.groupHeader(g))
 		}
 		for _, r := range g.resources {
-			lines = append(lines, m.resourceRow(idx, r))
-			idx++
+			sel++
+			lines = append(lines, m.resourceRow(sel, r))
+			// A helm_resource bundles a whole release under one row; show its inner
+			// workloads as selectable children (their logs filter to that workload's
+			// pods). Single-workload resources stay flat — the child would just echo
+			// the row. ponytail: rows past the sidebar height are clipped by the box —
+			// fine until a release has dozens of workloads.
+			if wl := r.Workloads(); len(wl) > 1 {
+				for _, w := range wl {
+					sel++
+					lines = append(lines, m.workloadRow(sel, w))
+				}
+			}
 		}
 	}
-	if m.view != nil && idx == 0 {
+	if m.view != nil && sel == 0 {
 		lines = append(lines, m.theme.muted().Render(" no resources"))
 	}
 
@@ -222,10 +283,25 @@ func (m Model) groupRollup(rs []tilt.UIResource) string {
 	return strings.Join(segs, " ")
 }
 
-// resourceRow renders the resource at visible()[i], i.e. selection index i+1.
-func (m Model) resourceRow(i int, r tilt.UIResource) string {
+// workloadRow renders a selectable child row under a k8s resource — one inner
+// workload (deployment/statefulset) of a bundled helm release. Selecting it
+// filters the log pane to that workload's pods. sel is its selection index.
+func (m Model) workloadRow(sel int, name string) string {
+	if sel == m.selected && m.focus == focusSidebar {
+		text := ansi.Truncate("▶ └ "+name, sidebarWidth, "…")
+		return lipgloss.NewStyle().Reverse(true).Bold(true).Width(sidebarWidth).Render(text)
+	}
+	ind := " "
+	if sel == m.selected {
+		ind = m.theme.accent().Render("▶")
+	}
+	row := ind + " " + m.theme.muted().Render("└ "+name)
+	return ansi.Truncate(row, sidebarWidth, "…")
+}
+
+// resourceRow renders a resource at the given selection index.
+func (m Model) resourceRow(sel int, r tilt.UIResource) string {
 	st := r.State()
-	sel := i + 1
 
 	// The selected row gets the bright reverse-video bar only while the sidebar
 	// is focused. When focus moves to the logs, the highlight moves with it (to

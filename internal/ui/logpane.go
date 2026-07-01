@@ -80,11 +80,22 @@ func (m *Model) setLogs() {
 	// text filter, and hand them to the windowed renderer — which wraps and paints
 	// only the visible rows. Assembly is O(buffer) but bounded by the segment cap;
 	// the per-frame render is O(visible).
-	if m.onAllLogs() {
+	switch {
+	case m.onAllLogs():
 		m.log.setLines(m.filterLines(m.combinedLogLines()))
-	} else {
+	case m.selectedRowIsWorkload():
+		manifest, workload, _ := m.selectedWorkload()
+		segs := m.view.LogList.SegmentsForWorkload(manifest, workload)
+		m.log.setLines(m.filterLines(m.logLinesFrom(segs)))
+	default:
 		m.log.setLines(m.filterLines(m.resourceLogLines(r)))
 	}
+}
+
+// selectedRowIsWorkload reports whether a workload child row is selected.
+func (m Model) selectedRowIsWorkload() bool {
+	_, _, ok := m.selectedWorkload()
+	return ok
 }
 
 // filterLines applies the text filter (m.logFilter): it keeps only lines that
@@ -110,8 +121,14 @@ func (m Model) filterLines(lines []string) []string {
 // resourceLogLines returns the selected resource's logs as sanitized lines,
 // honoring the level filter.
 func (m Model) resourceLogLines(r tilt.UIResource) []string {
+	return m.logLinesFrom(m.view.LogList.SegmentsFor(r.Name()))
+}
+
+// logLinesFrom assembles the given segments into sanitized lines, honoring the
+// level filter. Shared by the resource and per-workload log views.
+func (m Model) logLinesFrom(segs []tilt.LogSegment) []string {
 	var b strings.Builder
-	for _, s := range m.view.LogList.SegmentsFor(r.Name()) {
+	for _, s := range segs {
 		if m.level.allows(s.Level) {
 			b.WriteString(s.Text)
 		}
@@ -203,8 +220,27 @@ func (m Model) resourceLogText(r tilt.UIResource) string {
 	if m.view == nil {
 		return ""
 	}
+	return logTextFrom(m.view.LogList.SegmentsFor(r.Name()))
+}
+
+// selectedLogTarget returns the name and full plain-text logs for the current
+// selection — the workload's pods when a workload child row is selected, else the
+// whole resource. Backs the open/save-logs actions so they match the pane.
+func (m Model) selectedLogTarget(r tilt.UIResource) (name, text string) {
+	if m.view == nil {
+		return r.Name(), ""
+	}
+	if manifest, workload, ok := m.selectedWorkload(); ok {
+		return r.Name() + "-" + workload, logTextFrom(m.view.LogList.SegmentsForWorkload(manifest, workload))
+	}
+	return r.Name(), logTextFrom(m.view.LogList.SegmentsFor(r.Name()))
+}
+
+// logTextFrom joins segments into full plain text (every level, ANSI stripped,
+// control noise neutralized) — the form that opens cleanly in an editor.
+func logTextFrom(segs []tilt.LogSegment) string {
 	var b strings.Builder
-	for _, s := range m.view.LogList.SegmentsFor(r.Name()) {
+	for _, s := range segs {
 		b.WriteString(s.Text)
 	}
 	out := make([]string, 0, 64)
@@ -306,24 +342,32 @@ func (m Model) renderRightPane(w, h int) string {
 		if g := statusGlyph(st); g != "" {
 			statusSeg = g + " " + statusSeg
 		}
+		// On a workload child row, title is "<resource> / <workload>" and we drop the
+		// RuntimeLine — that's the resource's single representative pod, which may
+		// belong to a different workload in the release.
+		_, workload, isWorkload := m.selectedWorkload()
+		name := r.Name()
+		if isWorkload {
+			name += " / " + workload
+		}
 		if m.focus == focusLogs {
 			// Focus indicator: the header takes the same reverse-video highlight the
 			// sidebar selection uses, so the cursor highlight follows focus.
-			plain := r.Name()
+			plain := name
 			if b := r.Backend(); b != "" {
 				plain += " · " + b
 			}
-			if rl := r.RuntimeLine(); rl != "" {
+			if rl := r.RuntimeLine(); rl != "" && !isWorkload {
 				plain += " · " + rl
 			}
 			plain += " · " + statusSeg
 			header = lipgloss.NewStyle().Reverse(true).Bold(true).Width(w).Render(ansi.Truncate(" "+plain, w, "…"))
 		} else {
-			parts := []string{m.theme.header().Render(r.Name())}
+			parts := []string{m.theme.header().Render(name)}
 			if b := r.Backend(); b != "" {
 				parts = append(parts, m.theme.accent().Render(b))
 			}
-			if rl := r.RuntimeLine(); rl != "" {
+			if rl := r.RuntimeLine(); rl != "" && !isWorkload {
 				parts = append(parts, m.theme.muted().Render(rl))
 			}
 			parts = append(parts, lipgloss.NewStyle().Foreground(m.theme.StatusColor(st)).Render(statusSeg))

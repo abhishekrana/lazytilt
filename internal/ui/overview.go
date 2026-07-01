@@ -135,12 +135,12 @@ func (m Model) openOverviewRow(r ovRow) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-// selectByName points the sidebar selection at the named resource, if visible.
-// Selection index 0 is the "All Resources" row, so a resource at visible()[i]
-// lives at index i+1.
+// selectByName points the sidebar selection at the named resource's row, if
+// present. Selection index 0 is the "All Resources" row, so selectableRows()[i]
+// lives at index i+1; workload child rows are skipped (we land on the parent).
 func (m *Model) selectByName(name string) {
-	for i, r := range m.visible() {
-		if r.Name() == name {
+	for i, row := range m.selectableRows() {
+		if row.workload == "" && row.resource.Name() == name {
 			m.selected = i + 1
 			return
 		}

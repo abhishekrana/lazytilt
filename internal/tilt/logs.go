@@ -22,6 +22,26 @@ func (l *LogList) SegmentsFor(manifest string) []LogSegment {
 	return out
 }
 
+// SegmentsForWorkload returns the log segments from the pods of one workload
+// (deployment/statefulset) within a manifest, in order. Tilt tags each pod's log
+// span "pod:<manifest>:<podName>", and a workload's pods are named
+// "<workload>-<hash>" (Deployment) or "<workload>-<ordinal>" (StatefulSet), so we
+// match the "pod:<manifest>:<workload>-" prefix.
+//
+// ponytail: prefix match — a workload whose name prefixes a sibling ("data" vs
+// "data-hub") would over-match. None do here; tighten to exact pod ownership if it
+// ever bites.
+func (l *LogList) SegmentsForWorkload(manifest, workload string) []LogSegment {
+	prefix := "pod:" + manifest + ":" + workload + "-"
+	var out []LogSegment
+	for _, s := range l.Segments {
+		if strings.HasPrefix(s.SpanID, prefix) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // LogLine is one assembled log line tagged with the resource (manifest) it came
 // from. An empty Manifest denotes global (non-resource) Tilt output.
 type LogLine struct {

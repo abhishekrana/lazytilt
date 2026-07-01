@@ -3,8 +3,32 @@ package tilt
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestSegmentsForWorkload(t *testing.T) {
+	// Pod log spans are "pod:<manifest>:<podName>"; a workload's pods are
+	// "<workload>-<hash/ordinal>". Match by the "pod:<manifest>:<workload>-" prefix.
+	ll := LogList{Segments: []LogSegment{
+		{SpanID: "pod:apps:web-abc-1", Text: "web 1\n"},
+		{SpanID: "pod:apps:worker-def-2", Text: "worker\n"},
+		{SpanID: "pod:apps:web-abc-1", Text: "web 2\n"},
+		{SpanID: "monitor:apps:web-abc-1", Text: "event\n"}, // not a pod-log span
+	}}
+	got := ll.SegmentsForWorkload("apps", "web")
+	if len(got) != 2 {
+		t.Fatalf("got %d segments, want 2", len(got))
+	}
+	for _, s := range got {
+		if !strings.HasPrefix(s.Text, "web ") {
+			t.Errorf("unexpected segment %q", s.Text)
+		}
+	}
+	if n := len(ll.SegmentsForWorkload("other", "web")); n != 0 {
+		t.Errorf("cross-manifest match returned %d, want 0", n)
+	}
+}
 
 func loadView(t *testing.T, name string) *View {
 	t.Helper()
@@ -77,6 +101,47 @@ func TestDecodeK8s(t *testing.T) {
 	errs, ok, total := v.Counts()
 	if errs != 1 || ok != 3 || total != 4 {
 		t.Errorf("counts = (%d,%d,%d), want (1,3,4)", errs, ok, total)
+	}
+}
+
+func TestWorkloads(t *testing.T) {
+	// helm_resource bundles a release: DisplayNames lists every object as
+	// "<name>:<kind>". Workloads keeps only deployable kinds, sorted; glue is dropped.
+	r := &UIResource{Status: UIResourceStatus{K8sResourceInfo: &K8sResourceInfo{
+		DisplayNames: []string{
+			"data-hub:deployment", "auth-service:service", "minio:secret",
+			"postgresql:statefulset", "auth-service:deployment", "migrate:job",
+		},
+	}}}
+	got := r.Workloads()
+	want := []string{"auth-service", "data-hub", "migrate", "postgresql"}
+	if len(got) != len(want) {
+		t.Fatalf("Workloads() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("Workloads() = %v, want %v", got, want)
+		}
+	}
+
+	// WorkloadKinds collapses the same DisplayNames to distinct deployable kinds, sorted.
+	gotK := r.WorkloadKinds()
+	wantK := []string{"deployment", "job", "statefulset"}
+	if len(gotK) != len(wantK) {
+		t.Fatalf("WorkloadKinds() = %v, want %v", gotK, wantK)
+	}
+	for i := range wantK {
+		if gotK[i] != wantK[i] {
+			t.Fatalf("WorkloadKinds() = %v, want %v", gotK, wantK)
+		}
+	}
+
+	// No k8sResourceInfo (compose/local/Tiltfile) -> no workloads or kinds.
+	if wl := (&UIResource{}).Workloads(); wl != nil {
+		t.Errorf("non-k8s Workloads() = %v, want nil", wl)
+	}
+	if k := (&UIResource{}).WorkloadKinds(); k != nil {
+		t.Errorf("non-k8s WorkloadKinds() = %v, want nil", k)
 	}
 }
 

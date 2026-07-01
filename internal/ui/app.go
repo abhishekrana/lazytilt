@@ -344,12 +344,14 @@ func (m Model) updateKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "o":
 		if r, ok := m.selectedResource(); ok && m.view != nil {
-			return m, openLogsCmd(r.Name(), m.resourceLogText(r))
+			name, text := m.selectedLogTarget(r)
+			return m, openLogsCmd(name, text)
 		}
 		return m, nil
 	case "s":
 		if r, ok := m.selectedResource(); ok && m.view != nil {
-			return m, saveLogsCmd(r.Name(), m.resourceLogText(r))
+			name, text := m.selectedLogTarget(r)
+			return m, saveLogsCmd(name, text)
 		}
 		return m, nil
 	case "S":

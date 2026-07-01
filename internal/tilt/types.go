@@ -102,6 +102,12 @@ type K8sResourceInfo struct {
 	PodRestarts        int    `json:"podRestarts"`
 	AllContainersReady bool   `json:"allContainersReady"`
 	SpanID             string `json:"spanID"`
+	// DisplayNames lists every k8s object the resource manages as "<name>:<kind>"
+	// (e.g. "data-hub:deployment", "minio:service"). A helm_resource bundles a whole
+	// release under one UIResource, so this is the only place the inner
+	// deployments/statefulsets are exposed — k8sResourceInfo still carries just one
+	// representative podName.
+	DisplayNames []string `json:"displayNames"`
 }
 
 type LocalResourceInfo struct {

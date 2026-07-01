@@ -12,6 +12,75 @@ import (
 	"github.com/muesli/termenv"
 )
 
+// TestWorkloadSelection covers helm-bundle drill-down: a k8s resource that
+// reports multiple workloads expands into selectable child rows, and selecting a
+// child filters the log pane to that workload's pods while resource actions still
+// target the parent. The label grouping (apps/infra headers) must survive.
+func TestWorkloadSelection(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer lipgloss.SetColorProfile(termenv.Ascii)
+
+	v := &tilt.View{
+		UIResources: []tilt.UIResource{{
+			Metadata: tilt.ObjectMeta{Name: "bundle", Labels: map[string]string{"apps": ""}},
+			Status: tilt.UIResourceStatus{
+				UpdateStatus: "ok", RuntimeStatus: "ok", Order: 1,
+				K8sResourceInfo: &tilt.K8sResourceInfo{
+					PodName:      "web-abc-1",
+					PodStatus:    "Running",
+					DisplayNames: []string{"web:deployment", "worker:deployment", "web:service"},
+				},
+			},
+		}},
+		LogList: tilt.LogList{
+			Spans: map[string]tilt.LogSpan{
+				"pod:bundle:web-abc-1":    {ManifestName: "bundle"},
+				"pod:bundle:worker-def-2": {ManifestName: "bundle"},
+			},
+			Segments: []tilt.LogSegment{
+				{SpanID: "pod:bundle:web-abc-1", Text: "hello from web\n"},
+				{SpanID: "pod:bundle:worker-def-2", Text: "hello from worker\n"},
+			},
+		},
+	}
+
+	m := New("", "localhost", 10350, "")
+	m = step(m, tea.WindowSizeMsg{Width: 110, Height: 26})
+	m = step(m, instancesMsg{instances: []discovery.Instance{{Host: "localhost", Port: 10350, Label: "app"}}})
+	m = step(m, viewMsg{port: 10350, view: v})
+	m = step(m, tea.KeyMsg{Type: tea.KeyEsc}) // leave overview
+
+	// Rows: bundle (sel 1), then its workloads web (2) and worker (3), sorted.
+	if rows := m.selectableRows(); len(rows) != 3 {
+		t.Fatalf("selectableRows = %d, want 3 (resource + 2 workloads)", len(rows))
+	}
+
+	m.selected = 2 // the "web" workload child
+	mn, wl, ok := m.selectedWorkload()
+	if !ok || mn != "bundle" || wl != "web" {
+		t.Fatalf("selectedWorkload = (%q,%q,%v), want (bundle,web,true)", mn, wl, ok)
+	}
+	// Resource actions still target the parent release.
+	if r, ok := m.selectedResource(); !ok || r.Name() != "bundle" {
+		t.Fatalf("selectedResource on workload row = %q,%v, want bundle", r.Name(), ok)
+	}
+
+	m.setLogs()
+	frame := ansi.Strip(m.View())
+	if !strings.Contains(frame, "bundle / web") {
+		t.Errorf("header missing workload title:\n%s", frame)
+	}
+	if !strings.Contains(frame, "hello from web") || strings.Contains(frame, "hello from worker") {
+		t.Errorf("logs not filtered to the web workload:\n%s", frame)
+	}
+	// Grouping + nesting preserved.
+	for _, want := range []string{"apps", "bundle", "└ web", "└ worker"} {
+		if !strings.Contains(frame, want) {
+			t.Errorf("frame missing %q:\n%s", want, frame)
+		}
+	}
+}
+
 func TestSidebarLabelGrouping(t *testing.T) {
 	lipgloss.SetColorProfile(termenv.TrueColor)
 	defer lipgloss.SetColorProfile(termenv.Ascii)

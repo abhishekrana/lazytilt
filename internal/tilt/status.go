@@ -3,6 +3,7 @@ package tilt
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -78,6 +79,54 @@ func (r *UIResource) Backend() string {
 	default:
 		return ""
 	}
+}
+
+// workloadKinds are the object kinds (as they appear in DisplayNames) we treat
+// as deployable workloads — the "deployments/pods" the resource runs. Everything
+// else (service, configmap, secret, pvc, serviceaccount) is supporting glue we
+// don't surface.
+var workloadKinds = map[string]bool{
+	"deployment": true, "statefulset": true, "daemonset": true,
+	"replicaset": true, "job": true, "cronjob": true, "rollout": true,
+}
+
+// Workloads returns the workload names this k8s resource manages, sorted. For a
+// helm_resource (a whole release under one Tilt resource) this is the list of
+// inner deployments/statefulsets — e.g. ["auth-service", "data-hub", ...]. Empty
+// for non-k8s resources or when Tilt reports no object list.
+func (r *UIResource) Workloads() []string {
+	if r.Status.K8sResourceInfo == nil {
+		return nil
+	}
+	var out []string
+	for _, dn := range r.Status.K8sResourceInfo.DisplayNames {
+		name, kind, ok := strings.Cut(dn, ":")
+		if ok && workloadKinds[kind] {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// WorkloadKinds returns the distinct workload kinds this k8s resource manages,
+// sorted — e.g. ["deployment"] for a normal resource, or ["deployment","job",
+// "statefulset"] for a helm release. Empty for non-k8s resources or ones with no
+// workload objects. Lets the detail view name the resource type (deployment vs job).
+func (r *UIResource) WorkloadKinds() []string {
+	if r.Status.K8sResourceInfo == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, dn := range r.Status.K8sResourceInfo.DisplayNames {
+		if _, kind, ok := strings.Cut(dn, ":"); ok && workloadKinds[kind] && !seen[kind] {
+			seen[kind] = true
+			out = append(out, kind)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // RuntimeLine is the single adaptive line shown in the detail header. It keeps
