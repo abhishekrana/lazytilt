@@ -41,8 +41,10 @@ func (m Model) detailLines(r tilt.UIResource, w int) []string {
 		lines = append(lines, m.theme.muted().Render("kind ")+strings.Join(kinds, ", "))
 	}
 
-	if d, ok := r.LastBuildDuration(); ok {
-		lines = append(lines, m.theme.muted().Render("build ")+formatDuration(d))
+	if b, ok := r.LastBuild(); ok {
+		line := m.theme.muted().Render("build ") + formatDuration(b.FinishTime.Sub(b.StartTime))
+		line += m.theme.muted().Render(buildRecency(b.FinishTime, time.Now()))
+		lines = append(lines, line)
 	}
 
 	for _, e := range r.Endpoints() {
@@ -68,6 +70,28 @@ func firstLine(s string) string {
 		}
 	}
 	return ""
+}
+
+// buildRecency renders how long ago the last build finished as a " · 2m ago"
+// suffix ("just now" under a minute, hours/days beyond). Empty when the finish
+// time is unknown or in the future (clock skew), so the build line just omits it.
+func buildRecency(finish, now time.Time) string {
+	if finish.IsZero() {
+		return ""
+	}
+	age := now.Sub(finish)
+	switch {
+	case age < 0:
+		return ""
+	case age < time.Minute:
+		return " · just now"
+	case age < time.Hour:
+		return fmt.Sprintf(" · %dm ago", int(age.Minutes()))
+	case age < 24*time.Hour:
+		return fmt.Sprintf(" · %dh ago", int(age.Hours()))
+	default:
+		return fmt.Sprintf(" · %dd ago", int(age.Hours()/24))
+	}
 }
 
 // formatDuration renders a build duration compactly: "350ms", "1.2s", "2m3s".

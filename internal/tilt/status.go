@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 )
 
 // Status is the single, backend-agnostic state we render for a resource. It
@@ -172,16 +171,17 @@ func (r *UIResource) LastWarnings() []string {
 	return nil
 }
 
-// LastBuildDuration returns how long the most recent build with valid
-// timestamps took, and whether one was found. Used by the detail view.
-func (r *UIResource) LastBuildDuration() (time.Duration, bool) {
+// LastBuild returns the most recent build with valid timestamps (start and finish
+// present and ordered), and whether one was found. The detail view uses it for
+// both the build duration and how long ago it finished.
+func (r *UIResource) LastBuild() (BuildTerminated, bool) {
 	for i := range r.Status.BuildHistory {
 		b := r.Status.BuildHistory[i]
 		if !b.StartTime.IsZero() && !b.FinishTime.IsZero() && !b.FinishTime.Before(b.StartTime) {
-			return b.FinishTime.Sub(b.StartTime), true
+			return b, true
 		}
 	}
-	return 0, false
+	return BuildTerminated{}, false
 }
 
 // Endpoints returns the resource's endpoint links (e.g. forwarded ports).

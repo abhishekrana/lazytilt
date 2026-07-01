@@ -23,6 +23,25 @@ func detailView(t *testing.T, v *tilt.View) Model {
 	return m
 }
 
+func TestBuildRecency(t *testing.T) {
+	now := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	for _, c := range []struct {
+		finish time.Time
+		want   string
+	}{
+		{now.Add(-30 * time.Second), " · just now"},
+		{now.Add(-2 * time.Minute), " · 2m ago"},
+		{now.Add(-3 * time.Hour), " · 3h ago"},
+		{now.Add(-50 * time.Hour), " · 2d ago"},
+		{now.Add(time.Minute), ""}, // future -> clock skew, omit
+		{time.Time{}, ""},          // unknown finish time
+	} {
+		if got := buildRecency(c.finish, now); got != c.want {
+			t.Errorf("buildRecency(%v) = %q, want %q", c.finish, got, c.want)
+		}
+	}
+}
+
 func TestDetailStripSurfacesFetchedFields(t *testing.T) {
 	start := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	v := &tilt.View{UIResources: []tilt.UIResource{{
