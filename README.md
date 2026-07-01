@@ -87,3 +87,6 @@ Themes: `--theme solarized-light` (default), `solarized-dark`, or `dark`; press 
 - **Discovery** scans local `tilt up` processes for their port and working directory.
 
 Status colors: green = ok, red = error, orange = building, yellow = pending, grey = disabled/idle.
+
+Developed and tested against **Tilt v0.37.4**. lazytilt only reads Tilt's View JSON, so nearby versions should work, but
+that's the version the fixtures and live tests track.
