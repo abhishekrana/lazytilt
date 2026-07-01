@@ -654,7 +654,6 @@ func (m Model) helpBox() string {
 		BorderForeground(m.theme.Accent).
 		Foreground(m.theme.Text).
 		Padding(2, 5).
-		Width(58).
 		Render(strings.Join(lines, "\n"))
 }
 
