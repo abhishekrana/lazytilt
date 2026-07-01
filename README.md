@@ -49,6 +49,13 @@ When resources carry Tiltfile **labels**, the sidebar groups them under label he
 rollup), sorted by label name with resources alphabetical inside each group. The headers are dividers only — selection
 still moves resource-to-resource. With no labels it's a flat list in Tilt's order.
 
+Selecting a resource shows a **detail strip** above its logs — the last build error and warnings (when present), the
+workload kind, how long ago it last built, endpoints, and labels — each line appearing only when it carries something.
+
+A **helm release** that bundles several workloads under one Tilt resource lists them as nested child rows; select a
+workload to narrow the logs to that workload's pods. (Tilt exposes no per-workload runtime status for a bundle, so a
+child row shows just the pod name, and the release header shows its workload count.)
+
 Themes: `--theme solarized-light` (default), `solarized-dark`, or `dark`; press `T` in-app to cycle.
 
 ## Keys

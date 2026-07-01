@@ -33,7 +33,8 @@ internal/tilt/          one Tilt instance: client + decode + actions (no UI)
   logs.go               span->manifest log assembly; AllLines = interleaved, source-tagged (All-Resources view)
   actions.go            shell out: tilt trigger|enable|disable <res> --port <port>; tilt snapshot create
 internal/discovery/     find `tilt up` processes -> []Instance; Linux /proc, macOS ps/lsof (discovery_<goos>.go)
-internal/ui/            Bubble Tea: app.go (model/Update/View), sidebar, logpane, overview, theme, messages
+internal/ui/            Bubble Tea: app.go (model/Update/View), sidebar, logpane, detail, overview, theme, messages
+  detail.go             resource detail strip above the logs (error/warnings/kind/build+recency/endpoints/labels)
   hub.go                I/O owner: discovers instances + one /ws/view per instance -> viewMsg/instancesMsg on a channel
   logview.go            windowed log renderer: wraps + paints only the visible rows (O(visible)/frame); owns scroll+follow
   overview.go           cross-instance ‹1› dashboard (landing screen) + top-bar health badges; esc/digit drills in
@@ -57,11 +58,18 @@ visible window — so CPU stays low whether idle or streaming a busy log. Action
   layout).
 - **Tab numbering: `‹1›` = overview, `‹2›…‹9›` = instances.** Must agree across `renderTopBar`, the overview header tags
   (`i+2`), and the digit handlers (`'2'` ⇒ index 0).
-- **Sidebar index 0 is the synthetic "All Resources" row**; resources are at `i+1`. `selectedResource()` is `ok=false`
-  there (resource actions no-op), `onAllLogs()` reports it, and anything mapping a resource to a selection index adds
-  +1.
-- **Sidebar grouping is label-driven.** Keep `visible()` and `renderSidebar` deriving from the same `sidebarGroups()` so
-  order and headers never drift; group headers aren't selectable.
+- **Sidebar index 0 is the synthetic "All Resources" row**; the navigable rows below it are `selectableRows()` — each
+  resource, then its workloads when a helm release bundles more than one. Selection index `i+1` maps to
+  `selectableRows()[i]`; keep it in lockstep with `renderSidebar`'s row order. `selectedResource()` returns the owning
+  resource (the parent for a workload child; `ok=false` on All-Resources, so resource actions no-op there),
+  `selectedWorkload()` reports a workload child, and `onAllLogs()` reports index 0.
+- **Sidebar grouping is label-driven.** Keep `selectableRows()`/`visible()` and `renderSidebar` deriving from the same
+  `sidebarGroups()` so order and headers never drift; group headers aren't selectable.
+- **Helm releases bundle workloads.** `k8sResourceInfo.displayNames` lists every managed object as `<name>:<kind>`;
+  `Workloads()`/`WorkloadKinds()` filter to deployable kinds. Helm _hooks_ (e.g. pre-upgrade jobs) are NOT in
+  `displayNames` — Tilt doesn't track them, so lazytilt can't show them. Per-workload pod status isn't exposed either,
+  so a bundle's header shows the workload count and a child row shows just the pod name (read from
+  `pod:<manifest>:<pod>` log span IDs).
 - **Keep it simple**, and use **no `Co-Authored-By`** lines in commits.
 
 ## Verifying UI changes
