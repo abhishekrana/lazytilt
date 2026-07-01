@@ -42,6 +42,23 @@ func (l *LogList) SegmentsForWorkload(manifest, workload string) []LogSegment {
 	return out
 }
 
+// PodNameForWorkload returns a pod name for the given workload, read from the log
+// span IDs Tilt tags as "pod:<manifest>:<podName>". Empty when the workload has
+// produced no logs yet. Scans Spans (one entry per source, not the whole segment
+// buffer), so it's cheap to call per render. Name only — Tilt exposes no
+// per-workload runtime status for a bundled resource.
+func (l *LogList) PodNameForWorkload(manifest, workload string) string {
+	prefix := "pod:" + manifest + ":"
+	for spanID := range l.Spans {
+		if strings.HasPrefix(spanID, prefix) {
+			if pod := spanID[len(prefix):]; strings.HasPrefix(pod, workload+"-") {
+				return pod
+			}
+		}
+	}
+	return ""
+}
+
 // LogLine is one assembled log line tagged with the resource (manifest) it came
 // from. An empty Manifest denotes global (non-resource) Tilt output.
 type LogLine struct {

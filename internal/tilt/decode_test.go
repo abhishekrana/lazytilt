@@ -30,6 +30,26 @@ func TestSegmentsForWorkload(t *testing.T) {
 	}
 }
 
+func TestPodNameForWorkload(t *testing.T) {
+	// Pod names come from the log span IDs, keyed "pod:<manifest>:<podName>".
+	ll := LogList{Spans: map[string]LogSpan{
+		"pod:apps:web-abc-1":    {ManifestName: "apps"},
+		"pod:apps:worker-def-2": {ManifestName: "apps"},
+		"build:apps:web":        {ManifestName: "apps"}, // not a pod span
+		"pod:other:web-xyz-9":   {ManifestName: "other"},
+	}}
+	if got := ll.PodNameForWorkload("apps", "web"); got != "web-abc-1" {
+		t.Errorf("PodNameForWorkload(apps, web) = %q, want %q", got, "web-abc-1")
+	}
+	if got := ll.PodNameForWorkload("apps", "db"); got != "" {
+		t.Errorf("no-logs workload = %q, want empty", got)
+	}
+	// "web-" prefix must not leak across manifests.
+	if got := ll.PodNameForWorkload("apps", "web-xyz"); got != "" {
+		t.Errorf("cross-manifest/partial match = %q, want empty", got)
+	}
+}
+
 func loadView(t *testing.T, name string) *View {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("testdata", name))

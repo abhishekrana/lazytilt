@@ -342,13 +342,21 @@ func (m Model) renderRightPane(w, h int) string {
 		if g := statusGlyph(st); g != "" {
 			statusSeg = g + " " + statusSeg
 		}
-		// On a workload child row, title is "<resource> / <workload>" and we drop the
-		// RuntimeLine — that's the resource's single representative pod, which may
-		// belong to a different workload in the release.
-		_, workload, isWorkload := m.selectedWorkload()
+		// On a workload child row, title is "<resource> / <workload>". Tilt reports no
+		// per-workload runtime status for a bundled release, so instead of the parent's
+		// RuntimeLine (a single representative pod that may belong to a different
+		// workload) we show just this workload's pod name, read from its log spans.
+		manifest, workload, isWorkload := m.selectedWorkload()
 		name := r.Name()
+		runtime := r.RuntimeLine()
 		if isWorkload {
 			name += " / " + workload
+			runtime = ""
+			if m.view != nil {
+				if pod := m.view.LogList.PodNameForWorkload(manifest, workload); pod != "" {
+					runtime = "pod " + pod
+				}
+			}
 		}
 		if m.focus == focusLogs {
 			// Focus indicator: the header takes the same reverse-video highlight the
@@ -357,8 +365,8 @@ func (m Model) renderRightPane(w, h int) string {
 			if b := r.Backend(); b != "" {
 				plain += " · " + b
 			}
-			if rl := r.RuntimeLine(); rl != "" && !isWorkload {
-				plain += " · " + rl
+			if runtime != "" {
+				plain += " · " + runtime
 			}
 			plain += " · " + statusSeg
 			header = lipgloss.NewStyle().Reverse(true).Bold(true).Width(w).Render(ansi.Truncate(" "+plain, w, "…"))
@@ -367,8 +375,8 @@ func (m Model) renderRightPane(w, h int) string {
 			if b := r.Backend(); b != "" {
 				parts = append(parts, m.theme.accent().Render(b))
 			}
-			if rl := r.RuntimeLine(); rl != "" && !isWorkload {
-				parts = append(parts, m.theme.muted().Render(rl))
+			if runtime != "" {
+				parts = append(parts, m.theme.muted().Render(runtime))
 			}
 			parts = append(parts, lipgloss.NewStyle().Foreground(m.theme.StatusColor(st)).Render(statusSeg))
 			header = strings.Join(parts, m.theme.muted().Render(" · "))
