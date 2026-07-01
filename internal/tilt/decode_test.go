@@ -136,6 +136,11 @@ func TestWorkloads(t *testing.T) {
 		}
 	}
 
+	// A bundle with no representative pod shows its workload count, not "pod pending".
+	if got := r.RuntimeLine(); got != "4 workloads" {
+		t.Errorf("bundle RuntimeLine = %q, want %q", got, "4 workloads")
+	}
+
 	// No k8sResourceInfo (compose/local/Tiltfile) -> no workloads or kinds.
 	if wl := (&UIResource{}).Workloads(); wl != nil {
 		t.Errorf("non-k8s Workloads() = %v, want nil", wl)

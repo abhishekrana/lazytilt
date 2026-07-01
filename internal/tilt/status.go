@@ -135,6 +135,13 @@ func (r *UIResource) RuntimeLine() string {
 	case "k8s":
 		k := r.Status.K8sResourceInfo
 		if k.PodName == "" {
+			// A helm_resource bundles many workloads under one UIResource and reports no
+			// single representative pod, so "pod pending" would lie — the release's pods
+			// may be running fine. Show the workload count instead. A plain resource with
+			// no pod yet is genuinely still pending.
+			if n := len(r.Workloads()); n > 1 {
+				return fmt.Sprintf("%d workloads", n)
+			}
 			return "pod pending"
 		}
 		line := fmt.Sprintf("pod %s · %s", k.PodName, k.PodStatus)
